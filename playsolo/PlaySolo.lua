@@ -122,6 +122,38 @@ task.spawn(function()
 		joints.rh.DesiredAngle, joints.lh.DesiredAngle = -amp, -amp
 	end)
 
+	-- What a game server does when a player joins: StarterGui -> PlayerGui,
+	-- StarterPlayerScripts -> PlayerScripts, StarterCharacterScripts -> character.
+	local function copyInto(from, to)
+		if not (from and to) then return 0 end
+		local n = 0
+		for _, c in from:GetChildren() do
+			if not to:FindFirstChild(c.Name) then
+				local ok = pcall(function()
+					c:Clone().Parent = to
+				end)
+				if ok then n += 1 end
+			end
+		end
+		return n
+	end
+	try("player setup", function()
+		local StarterPlayer = game:GetService("StarterPlayer")
+		local playerGui = player:FindFirstChildOfClass("PlayerGui")
+		local playerScripts = player:FindFirstChildOfClass("PlayerScripts")
+		log("PlayerGui", tostring(playerGui), "PlayerScripts", tostring(playerScripts), "Backpack", tostring(player:FindFirstChildOfClass("Backpack")))
+		log("copied", copyInto(game:GetService("StarterGui"), playerGui), "guis,",
+			copyInto(StarterPlayer:FindFirstChildOfClass("StarterPlayerScripts"), playerScripts), "player scripts,",
+			copyInto(StarterPlayer:FindFirstChildOfClass("StarterCharacterScripts"), character), "character scripts")
+	end)
+
+	-- Spawn on a SpawnLocation if there is one.
+	local spawnLocation = workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+	if spawnLocation then
+		root.CFrame = spawnLocation.CFrame * CFrame.new(0, spawnLocation.Size.Y / 2 + 3, 0)
+		log("spawned at SpawnLocation", spawnLocation:GetFullName())
+	end
+
 	-- Spawn where the place's camera was looking (the place has no SpawnLocation).
 	local yaw0 = 0
 	if placeView and not workspace:FindFirstChildWhichIsA("SpawnLocation", true) then
