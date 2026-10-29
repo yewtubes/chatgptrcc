@@ -282,18 +282,179 @@ addToLibrary({
     return 1;
   },
 
-  // ---- RNA transport (QUIC-like over WebTransport); reported unsupported so
-  // the engine uses its UDP/RakNet path through the ring buffers instead.
-  rbx_wasm_rna_is_supported_js: () => 0,
-  rbx_wasm_rna_connect_js: (...a) => console.warn('[rbx] rna_connect (unsupported)', a),
-  rbx_wasm_rna_resume_stream_read_js: (a, b) => {},
-  rbx_wasm_rna_receive_ring_consumed_js: (a, b, c) => {},
-  rbx_wasm_rna_shutdown_stream_read_js: (a, b) => {},
-  rbx_wasm_rna_pause_stream_read_js: (a, b) => {},
-  rbx_wasm_rna_shutdown_stream_write_js: (a, b) => {},
-  rbx_wasm_rna_send_connection_close_js: (a) => {},
-  rbx_wasm_rna_write_stream_js: (a, b, c, d) => {},
-  rbx_wasm_rna_open_stream_js: (a, b) => {},
-  rbx_wasm_rna_close_js: (a) => {},
-  rbx_wasm_rna_send_datagram_js: (a, b, c, d, e) => {},
+  // ---- RNA transport: RbxTransport over WebTransport ------------------------
+  // The engine drives a WebTransport session through these imports and gets
+  // events back through its embind callbacks (Module.rbx_wasm_rna_on_*).
+  // Received bytes go into a ring that lives in the engine's connection object:
+  // 32 slots of 64 KiB at `ring`, a head index JS advances at `headPtr` and a
+  // tail index the engine advances at `tailPtr` (receive_ring_consumed_js
+  // follows each advance). Stream ids are chosen by the engine for streams it
+  // opens (0, 4, 8, ...) and by JS for streams the server opens.
+  $rbxRna: { conns: {} },
+  $rbxRnaCall: (name, ...args) => {
+    try { Module['rbx_wasm_rna_on_' + name](...args); } catch (e) { console.error('[rna] callback', name, e); }
+  },
+  $rbxRnaPump__deps: ['$rbxRnaCall'],
+  $rbxRnaPump: (c) => {
+    // Moves queued chunks into free ring slots.
+    while (c.queue.length) {
+      var head = Atomics.load(HEAP32, c.headPtr >> 2), tail = Atomics.load(HEAP32, c.tailPtr >> 2);
+      if (((head - tail) | 0) >= c.slots) return;
+      var [kind, id, bytes] = c.queue.shift();
+      var slot = head & (c.slots - 1);
+      HEAPU8.set(bytes, c.ring + slot * c.slotSize);
+      Atomics.store(HEAP32, c.headPtr >> 2, (head + 1) | 0);
+      rbxRnaCall('receive_ring_slot', c.h, kind, id, slot, bytes.length);
+    }
+  },
+  $rbxRnaDeliver__deps: ['$rbxRnaPump'],
+  $rbxRnaDeliver: (c, kind, id, bytes) => {
+    for (var o = 0; o < bytes.length || (o === 0 && bytes.length === 0); o += c.slotSize) {
+      c.queue.push([kind, id, bytes.subarray(o, o + c.slotSize)]);
+      if (!bytes.length) break;
+    }
+    rbxRnaPump(c);
+  },
+  $rbxRnaReadStream__deps: ['$rbxRnaDeliver', '$rbxRnaCall'],
+  $rbxRnaReadStream: async (c, st) => {
+    if (st.readLoop || !st.readable) return;
+    st.readLoop = true;
+    var reader = st.reader = st.readable.getReader();
+    try {
+      for (;;) {
+        while (st.paused) await new Promise((r) => (st.wake = r));
+        var { value, done } = await reader.read();
+        if (done) { rbxRnaCall('stream_fin', c.h, st.id); break; }
+        rbxRnaDeliver(c, 0, st.id, new Uint8Array(value));
+      }
+    } catch (e) {
+      if (!c.closed) rbxRnaCall('stream_error', c.h, st.id, e?.streamErrorCode ?? 0);
+    }
+  },
+  $rbxRnaAddStream: (c, id, stream) => {
+    var st = { id, paused: false, readable: stream.readable ?? stream, writable: stream.writable ?? null, writer: null, chain: Promise.resolve() };
+    if (st.writable) st.writer = st.writable.getWriter();
+    c.streams.set(id, st);
+    return st;
+  },
+  $rbxRnaAccept__deps: ['$rbxRnaAddStream', '$rbxRnaCall'],
+  $rbxRnaAccept: async (c, readable, bidi) => {
+    var reader = readable.getReader();
+    try {
+      for (;;) {
+        var { value, done } = await reader.read();
+        if (done) break;
+        var id = bidi ? c.nextServerBidi : c.nextServerUni;
+        if (bidi) c.nextServerBidi += 4; else c.nextServerUni += 4;
+        rbxRnaAddStream(c, id, value);
+        rbxRnaCall('stream_accepted', c.h, id);
+      }
+    } catch (e) {}
+  },
+  $rbxRnaClosed__deps: ['$rbxRnaCall'],
+  $rbxRnaClosed: (c, info) => {
+    if (c.closed) return;
+    c.closed = true;
+    if (c.closing) rbxRnaCall('close_complete', c.h);
+    else rbxRnaCall('connection_closed', c.h, info?.closeCode ?? 0, 0, 0);
+    delete rbxRna.conns[c.h];
+  },
+  rbx_wasm_rna_is_supported_js: () => (typeof WebTransport !== 'undefined' ? 1 : 0),
+  rbx_wasm_rna_connect_js__deps: ['$UTF8ToString', '$rbxRna', '$rbxRnaCall', '$rbxRnaAccept', '$rbxRnaDeliver', '$rbxRnaClosed'],
+  rbx_wasm_rna_connect_js: (h, urlPtr, certs, ncerts, ring, headPtr, tailPtr, slotSize, slots) => {
+    var url = UTF8ToString(urlPtr);
+    var hashes = [];
+    for (var i = 0; i < ncerts; i++) {
+      var hex = UTF8ToString(HEAP32[(certs >> 2) + i]).replace(/[^0-9a-f]/gi, '');
+      hashes.push({ algorithm: 'sha-256', value: new Uint8Array(hex.match(/../g).map((x) => parseInt(x, 16))) });
+    }
+    console.log('[rna] connect', url, hashes.length ? 'pinned cert' : 'no cert hash');
+    var c = rbxRna.conns[h] = { h, ring, headPtr, tailPtr, slotSize, slots, queue: [], streams: new Map(),
+      nextServerBidi: 1, nextServerUni: 3, closed: false, closing: false, wt: null, dgWriter: null };
+    try {
+      c.wt = new WebTransport(url, hashes.length ? { serverCertificateHashes: hashes } : {});
+    } catch (e) {
+      console.warn('[rna] connect failed', e);
+      setTimeout(() => rbxRnaCall('connect_error', h), 0);
+      return;
+    }
+    c.wt.ready.then(() => {
+      var dg = c.wt.datagrams;
+      c.dgWriter = (dg.createWritable ? dg.createWritable() : dg.writable).getWriter();
+      console.log('[rna] connected', url, 'maxDatagramSize', dg.maxDatagramSize);
+      rbxRnaCall('connect_success', h, dg.maxDatagramSize | 0);
+      rbxRnaAccept(c, c.wt.incomingBidirectionalStreams, true);
+      rbxRnaAccept(c, c.wt.incomingUnidirectionalStreams, false);
+      (async () => {
+        var r = dg.readable.getReader();
+        try { for (;;) { var { value, done } = await r.read(); if (done) break; rbxRnaDeliver(c, 1, 0, new Uint8Array(value)); } } catch (e) {}
+      })();
+    }, (e) => {
+      console.warn('[rna] connect error', url, String(e));
+      c.closed = true;
+      delete rbxRna.conns[h];
+      rbxRnaCall('connect_error', h);
+    });
+    c.wt.closed.then((info) => rbxRnaClosed(c, info), (e) => rbxRnaClosed(c, { closeCode: e?.streamErrorCode ?? 0 }));
+  },
+  rbx_wasm_rna_receive_ring_consumed_js__deps: ['$rbxRna', '$rbxRnaPump'],
+  rbx_wasm_rna_receive_ring_consumed_js: (h, kind, id) => { var c = rbxRna.conns[h]; if (c) rbxRnaPump(c); },
+  rbx_wasm_rna_open_stream_js__deps: ['$rbxRna', '$rbxRnaReadStream', '$rbxRnaCall'],
+  rbx_wasm_rna_open_stream_js: (h, id) => {
+    var c = rbxRna.conns[h];
+    if (!c) return;
+    // Writes and reads issued before the stream exists wait on `pending`.
+    var st = { id, paused: false, readable: null, writable: null, writer: null, chain: null };
+    st.chain = c.wt.createBidirectionalStream().then((s) => {
+      st.readable = s.readable; st.writable = s.writable; st.writer = s.writable.getWriter();
+      if (st.wantRead) rbxRnaReadStream(c, st);
+    }, (e) => { console.warn('[rna] open stream failed', id, String(e)); rbxRnaCall('stream_error', h, id, 0); });
+    c.streams.set(id, st);
+  },
+  rbx_wasm_rna_write_stream_js__deps: ['$rbxRna', '$rbxRnaCall'],
+  rbx_wasm_rna_write_stream_js: (h, id, ptr, len) => {
+    var c = rbxRna.conns[h], st = c?.streams.get(id);
+    if (!st) { if (c) setTimeout(() => rbxRnaCall('stream_write_error', h, id), 0); return; }
+    var bytes = HEAPU8.slice(ptr, ptr + len);
+    st.chain = st.chain.then(() => st.writer.write(bytes)).then(
+      () => rbxRnaCall('stream_write_success', h, id, len),
+      (e) => { console.warn('[rna] write failed', id, String(e)); rbxRnaCall('stream_write_error', h, id); });
+  },
+  rbx_wasm_rna_resume_stream_read_js__deps: ['$rbxRna', '$rbxRnaReadStream'],
+  rbx_wasm_rna_resume_stream_read_js: (h, id) => {
+    var c = rbxRna.conns[h], st = c?.streams.get(id);
+    if (!st) return;
+    st.paused = false; st.wantRead = true;
+    if (st.wake) { st.wake(); st.wake = null; }
+    if (st.readable) rbxRnaReadStream(c, st);
+  },
+  rbx_wasm_rna_pause_stream_read_js__deps: ['$rbxRna'],
+  rbx_wasm_rna_pause_stream_read_js: (h, id) => { var st = rbxRna.conns[h]?.streams.get(id); if (st) st.paused = true; },
+  rbx_wasm_rna_shutdown_stream_read_js__deps: ['$rbxRna'],
+  rbx_wasm_rna_shutdown_stream_read_js: (h, id) => {
+    var st = rbxRna.conns[h]?.streams.get(id);
+    if (st) { st.paused = true; st.reader?.cancel().catch(() => {}); }
+  },
+  rbx_wasm_rna_shutdown_stream_write_js__deps: ['$rbxRna'],
+  rbx_wasm_rna_shutdown_stream_write_js: (h, id) => {
+    var st = rbxRna.conns[h]?.streams.get(id);
+    if (st) st.chain = st.chain.then(() => st.writer?.close()).catch(() => {});
+  },
+  rbx_wasm_rna_send_datagram_js__deps: ['$rbxRna', '$rbxRnaCall'],
+  rbx_wasm_rna_send_datagram_js: (h, ptr, len, idHi, idLo) => {
+    var c = rbxRna.conns[h];
+    if (!c?.dgWriter) { if (c) setTimeout(() => rbxRnaCall('datagram_lost', h, idHi, idLo), 0); return; }
+    c.dgWriter.write(HEAPU8.slice(ptr, ptr + len)).then(
+      () => rbxRnaCall('datagram_acked', h, idHi, idLo),
+      () => rbxRnaCall('datagram_lost', h, idHi, idLo));
+  },
+  rbx_wasm_rna_send_connection_close_js__deps: ['$rbxRna'],
+  rbx_wasm_rna_send_connection_close_js: (h) => { var c = rbxRna.conns[h]; if (c) { c.closing = true; try { c.wt.close(); } catch (e) {} } },
+  rbx_wasm_rna_close_js__deps: ['$rbxRna', '$rbxRnaCall'],
+  rbx_wasm_rna_close_js: (h) => {
+    var c = rbxRna.conns[h];
+    if (!c) { setTimeout(() => rbxRnaCall('close_complete', h), 0); return; }
+    c.closing = true;
+    try { c.wt.close(); } catch (e) {}
+  },
 });

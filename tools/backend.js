@@ -106,7 +106,7 @@ function joinScript(placeId) {
       ServerConnections: [{ Address: host, Port: port }], UdmuxEndpoints: [], DirectServerReturn: true,
       // Studio's local server also listens with RbxTransport (RBX_TRANSPORT_PORT); Studio's
       // own client connects there with the token "local_test".
-      ...(process.env.RBX_TRANSPORT_PORT ? { NetStackPort: +process.env.RBX_TRANSPORT_PORT, NetStackTokenValue: 'bG9jYWxfdGVzdA==' } : {}),
+      ...(process.env.RBX_TRANSPORT_PORT ? { NetStackPort: +process.env.RBX_TRANSPORT_PORT, NetStackTokenValue: 'bG9jYWxfdGVzdA==', GameFqdn: host, ...(process.env.RBX_TRANSPORT_CERT ? { NetStackConfig: JSON.parse(process.env.NETSTACK_SHAPE || 'null') ?? { certHashes: [process.env.RBX_TRANSPORT_CERT] } } : {}) } : {}),
       TokenGenAlgorithm: 0, PepperId: 0, TokenValue: '', PingUrl: '', PingInterval: 0,
       UserName: USER.name, DisplayName: USER.displayName, SeleniumTestMode: false, UserId: USER.id,
       RobloxLocale: 'en_us', GameLocale: 'en_us', SuperSafeChat: false, FlexibleChatEnabled: false,
