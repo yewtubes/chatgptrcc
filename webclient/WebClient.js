@@ -1,3 +1,24 @@
+(function () {
+  if (typeof self === 'undefined' || self.__rbxProxyInstalled) return;
+  self.__rbxProxyInstalled = true;
+  var origin = self.location.origin;
+  var rewrite = function (u) {
+    try {
+      var x = new URL(u, self.location.href);
+      if (x.origin !== origin && /(^|\.)(roblox\.com|rbxcdn\.com)$/.test(x.hostname)) return origin + '/proxy/' + x.href;
+    } catch (e) {}
+    return u;
+  };
+  var open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (m, u) {
+    arguments[1] = rewrite(u);
+    return open.apply(this, arguments);
+  };
+  if (self.fetch) {
+    var f = self.fetch;
+    self.fetch = function (i, init) { return f.call(this, typeof i === 'string' || i instanceof URL ? rewrite(String(i)) : i, init); };
+  }
+})();
 // This code implements the `-sMODULARIZE` settings by taking the generated
 // JS program code (INNER_JS_CODE) and wrapping it in a factory function.
 

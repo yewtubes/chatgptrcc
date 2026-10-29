@@ -24,7 +24,12 @@
   let authCookie = params.get('cookie') || 'local-dev';
   window.__wasmDevSettings = {
     baseUrl: params.get('baseUrl') || undefined,
-    apiProxy: undefined,
+    // Route the engine's roblox.com requests through the local server
+    // (/proxy/<url>), which forwards them without browser CORS restrictions.
+    apiProxy: params.get('proxy') === '0' ? undefined : {
+      url: (u) => `${location.origin}/proxy/${u}`,
+      authHeaders: () => ({}),
+    },
     skipDeviceProbe: true,
     disableRbxTransport: params.get('rbxTransport') === '0',
     get authCookie() { return authCookie; },

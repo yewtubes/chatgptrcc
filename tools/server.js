@@ -4,6 +4,7 @@
 //   /engine/<path>    -> webclient/<path>, falling back to webclient/files/<path>
 // Sends COOP/COEP so SharedArrayBuffer is available.
 const http = require('http'), fs = require('fs'), path = require('path');
+const { spawn } = require('child_process');
 const ROOT = path.resolve(__dirname, '..', 'webclient');
 const PORT = +process.env.PORT || 8080;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json',
@@ -41,6 +42,53 @@ function metadata() {
   return (metadataCache = JSON.stringify(out));
 }
 
+// /proxy/<url>: forwards the engine's web requests (it uses this form when its
+// CORS proxy is enabled). curl is used because it honours HTTPS_PROXY.
+const PROXY_HOSTS = /(^|\.)(roblox\.com|rbxcdn\.com)$/;
+function proxy(req, res, rest) {
+  let target = rest.replace(/^(https?):\/(?!\/)/, '$1://');
+  if (!/^https?:\/\//.test(target)) target = 'https://' + target;
+  // Drop the engine's own ?auth= parameter without re-encoding the rest of the
+  // query (CDN URLs carry signed tokens).
+  target = target.replace(/([?&])auth=[^&]*(&|$)/, (m, a, b) => (b ? a : '')).replace(/[?&]$/, '');
+  let u;
+  try { u = new URL(target); } catch { return send(res, 400, 'bad url'); }
+  if (!PROXY_HOSTS.test(u.hostname)) return send(res, 403, 'host not allowed');
+  // Telemetry stays local.
+  if (/^(ephemeralcounters\.api|ecsv2|client-telemetry|metrics|lms|tracing)\.roblox\.com$/.test(u.hostname) ||
+      /experience-signals-ingest|\/pbe$|otel|analytics|telemetry/.test(u.pathname)) {
+    return send(res, 200, '{}', 'application/json');
+  }
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    const args = ['-sS', '-L', '--compressed', '-m', '30', '-X', req.method, '-D', '-', '-o', '-', target];
+    for (const h of ['content-type', 'accept', 'roblox-place-id', 'x-csrf-token']) if (req.headers[h]) args.push('-H', `${h}: ${req.headers[h]}`);
+    if (chunks.length) args.push('--data-binary', '@-');
+    const c = spawn('curl', args);
+    const out = [];
+    c.stdout.on('data', (d) => out.push(d));
+    c.on('close', () => {
+      let buf = Buffer.concat(out);
+      // curl -D - writes header blocks (one per redirect) before the body
+      let status = 502, type = 'application/octet-stream';
+      for (;;) {
+        const end = buf.indexOf('\r\n\r\n');
+        if (end < 0 || !/^HTTP\//.test(buf.toString('latin1', 0, 5))) break;
+        const head = buf.toString('latin1', 0, end);
+        status = +head.split(' ')[1] || status;
+        const ct = /\ncontent-type:\s*([^\r\n]+)/i.exec(head);
+        if (ct) type = ct[1];
+        buf = buf.subarray(end + 4);
+      }
+      if (process.env.VERBOSE || status >= 400) console.log('proxy', status, req.method, u.href.slice(0, 160));
+      res.writeHead(status, { 'Content-Type': type });
+      res.end(buf);
+    });
+    if (chunks.length) c.stdin.end(Buffer.concat(chunks)); else c.stdin.end();
+  });
+}
+
 const server = http.createServer((req, res) => {
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
@@ -49,6 +97,8 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   let p = decodeURIComponent(url.pathname);
   if (p.includes('..')) return send(res, 400, 'bad path');
+  if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', '*'); return send(res, 204, ''); }
+  if (req.url.startsWith('/proxy/')) return proxy(req, res, req.url.slice('/proxy/'.length));
   if (p === '/') return serveFile(req, res, path.join(ROOT, 'WebClient.html'));
   if (p === '/engine/WebClient.metadata.json') { log(req, 200); return send(res, 200, metadata(), 'application/json'); }
   if (p === '/engine/WebClient.wasm' && fs.existsSync(path.join(ROOT, 'WebClient.patched.wasm')))

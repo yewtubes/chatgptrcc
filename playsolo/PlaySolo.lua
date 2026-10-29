@@ -26,6 +26,8 @@ end
 
 task.spawn(function()
 	log("starting; place has", #workspace:GetDescendants(), "workspace descendants")
+	-- The place's saved camera view, used to put the player in front of it.
+	local placeView = workspace.CurrentCamera and workspace.CurrentCamera.CFrame
 
 	local player = Players.LocalPlayer
 	if not player then
@@ -60,6 +62,75 @@ task.spawn(function()
 	local root = character:WaitForChild("HumanoidRootPart")
 	log("character spawned at", tostring(root.Position))
 
+	-- Avatar assets need a Roblox login (the head mesh, for one), so dress the
+	-- character the classic way using only built-in meshes and local textures.
+	local function classicLook(char)
+		try("classic look", function()
+			local colors = char:FindFirstChildOfClass("BodyColors") or Instance.new("BodyColors", char)
+			local yellow, blue, green = BrickColor.new("Bright yellow"), BrickColor.new("Bright blue"), BrickColor.new("Br. yellowish green")
+			colors.HeadColor, colors.LeftArmColor, colors.RightArmColor = yellow, yellow, yellow
+			colors.TorsoColor = blue
+			colors.LeftLegColor, colors.RightLegColor = green, green
+			local head = char:FindFirstChild("Head")
+			if head and head:IsA("MeshPart") then
+				-- Dynamic head whose mesh could not be fetched: hide it and weld a
+				-- classic head on top.
+				head.Transparency = 1
+				for _, d in head:GetChildren() do
+					if d:IsA("Decal") then d:Destroy() end
+				end
+				local classic = Instance.new("Part")
+				classic.Name = "ClassicHead"
+				classic.Size = Vector3.new(2, 1, 1)
+				classic.BrickColor = yellow
+				classic.CanCollide = false
+				classic.Massless = true
+				classic.CFrame = head.CFrame
+				local mesh = Instance.new("SpecialMesh", classic)
+				mesh.MeshType = Enum.MeshType.Head
+				mesh.Scale = Vector3.new(1.25, 1.25, 1.25)
+				local face = Instance.new("Decal", classic)
+				face.Name = "face"
+				face.Texture = "rbxasset://textures/face.png"
+				local weld = Instance.new("WeldConstraint", classic)
+				weld.Part0, weld.Part1 = head, classic
+				classic.Parent = char
+			elseif head then
+				head.BrickColor = yellow
+				if not head:FindFirstChildOfClass("SpecialMesh") and not head:IsA("MeshPart") then
+					Instance.new("SpecialMesh", head).MeshType = Enum.MeshType.Head
+				end
+			end
+		end)
+	end
+	classicLook(character)
+	player.CharacterAdded:Connect(function(char)
+		char:WaitForChild("Head")
+		classicLook(char)
+	end)
+
+	-- Spawn where the place's camera was looking (the place has no SpawnLocation).
+	local yaw0 = 0
+	if placeView and not workspace:FindFirstChildWhichIsA("SpawnLocation", true) then
+		try("place spawn", function()
+			local look = placeView.LookVector * Vector3.new(1, 0, 1)
+			if look.Magnitude < 1e-3 then return end
+			look = look.Unit
+			local params = RaycastParams.new()
+			params.FilterDescendantsInstances = { character }
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			local hit = workspace:Raycast(placeView.Position, placeView.LookVector * 1000, params)
+			local target = hit and hit.Position or (placeView.Position + look * 80)
+			-- stand a little way in front of what the camera was looking at
+			local stand = target - look * 120
+			local down = workspace:Raycast(stand + Vector3.new(0, 200, 0), Vector3.new(0, -400, 0), params)
+			if down then stand = down.Position end
+			yaw0 = math.atan2(-look.X, -look.Z)
+			root.CFrame = CFrame.new(stand + Vector3.new(0, 4, 0)) * CFrame.Angles(0, yaw0, 0)
+			log("moved to", tostring(stand))
+		end)
+	end
+
 	local camera = workspace.CurrentCamera
 	camera.CameraSubject = humanoid
 	camera.CameraType = Enum.CameraType.Scriptable
@@ -67,7 +138,7 @@ task.spawn(function()
 	-- Controls: WASD/arrows to move, space to jump, right mouse drag or Q/E to
 	-- turn the camera, mouse wheel to zoom.
 	local keys = {}
-	local yaw, pitch, zoom = 0, -0.35, 16
+	local yaw, pitch, zoom = yaw0, -0.12, 20
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if input.KeyCode == Enum.KeyCode.Space then
 			humanoid.Jump = true

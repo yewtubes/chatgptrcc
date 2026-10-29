@@ -56,6 +56,20 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
     await page.waitForTimeout(step * 1000);
     await page.screenshot({ path: shot }).catch((e) => console.log('screenshot failed', e.message));
   }
+  // Optional input script after loading, e.g. KEYS="w:3000,space:300,d:1500"
+  if (process.env.KEYS) {
+    await page.mouse.click(640, 360);
+    for (const step of process.env.KEYS.split(',')) {
+      const [k, ms] = step.split(':');
+      const key = { space: 'Space', w: 'KeyW', a: 'KeyA', s: 'KeyS', d: 'KeyD', q: 'KeyQ', e: 'KeyE' }[k] || k;
+      w(`input: ${key} for ${ms}ms`);
+      await page.keyboard.down(key);
+      await page.waitForTimeout(+ms || 200);
+      await page.keyboard.up(key);
+    }
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: shot.replace(/\.png$/, '-after-input.png') });
+  }
   console.log('screenshot:', shot, 'log:', logFile);
   await browser.close();
   server.close();
