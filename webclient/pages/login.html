@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f2f4f5; --card: #fff; --fg: #1b1d1f; --muted: #606770; --accent: #335fff; --err: #d03030; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1b1d1f; --card: #26282b; --fg: #eceeef; --muted: #a0a6ad; --err: #ff7070; } }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, sans-serif; }
+  main { width: min(360px, calc(100vw - 32px)); background: var(--card); border-radius: 12px; padding: 24px; box-sizing: border-box; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  p.note { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+  input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #8884; border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+  button { margin-top: 18px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  #err { color: var(--err); min-height: 1.4em; margin-top: 10px; font-size: 13px; }
+  .switch { margin-top: 14px; text-align: center; font-size: 13px; }
+  .switch a { color: var(--accent); }
+  .signup-only[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Sign in</h1>
+  <p class="note">An account on this self-hosted platform. It is not a Roblox account.</p>
+  <form id="form">
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" required>
+    <div class="signup-only" hidden>
+      <label for="displayName">Display name</label>
+      <input id="displayName" name="displayName">
+      <label for="birthdate">Birthdate</label>
+      <input id="birthdate" name="birthdate" type="date">
+    </div>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required minlength="8">
+    <button id="submit">Sign in</button>
+    <div id="err" role="alert"></div>
+  </form>
+  <div class="switch" id="switch"></div>
+</main>
+<script>
+  const params = new URLSearchParams(location.search);
+  const returnUrl = /^\/(?!\/)/.test(params.get('returnUrl') || '') ? params.get('returnUrl') : '/games/start?placeId=1818';
+  const signup = location.pathname === '/signup';
+  document.getElementById('title').textContent = document.title = signup ? 'Create an account' : 'Sign in';
+  document.getElementById('submit').textContent = signup ? 'Sign up' : 'Sign in';
+  document.querySelector('.signup-only').hidden = !signup;
+  document.getElementById('birthdate').required = signup;
+  const other = `${signup ? '/login' : '/signup'}?returnUrl=${encodeURIComponent(returnUrl)}`;
+  document.getElementById('switch').innerHTML = signup ? `Have an account? <a href="${other}">Sign in</a>` : `New here? <a href="${other}">Create an account</a>`;
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target));
+    if (!signup) { delete body.displayName; delete body.birthdate; }
+    const r = await fetch(`/api/local/auth/${signup ? 'signup' : 'login'}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) return location.assign(returnUrl);
+    const j = await r.json().catch(() => ({}));
+    document.getElementById('err').textContent = (j.errors && j.errors[0] && j.errors[0].message) || `Request failed (HTTP ${r.status})`;
+  });
+</script>
+</body>
+</html>

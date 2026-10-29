@@ -1,0 +1,11 @@
+# Virtual display Studio renders into on a headless server.
+[Unit]
+Description=Xvfb :78 for Roblox Studio
+
+[Service]
+User=roblox
+ExecStart=/usr/bin/Xvfb :78 -screen 0 1280x800x24
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

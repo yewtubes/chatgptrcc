@@ -1,0 +1,19 @@
+#!/bin/bash
+# Headless "browser" for Studio under Wine (winebrowser -> xdg-open). Studio's
+# "Login via Browser" opens the local backend's OAuth authorize URL; this follows
+# it (the backend approves for STUDIO_OAUTH_USER, see tools/backend/routes/accounts.js)
+# and hands the redirect (roblox-studio-auth-<env>:/?code=...) to Studio, as the OS
+# protocol handler would. Other URLs are only logged.
+ROOT=$(readlink -f "$(dirname "$0")/../../..")
+url=$1
+echo "$(date -Is) $url" >> "${STUDIO_DIR:-/home/user/studio}/opened-urls.log"
+case "$url" in
+  https://apis.sitetest1.robloxlabs.com/oauth/*|https://www.sitetest1.robloxlabs.com/*oauth*)
+    loc=$(curl -sS --noproxy '*' --cacert "$ROOT/backend-tls/ca.crt" -o /dev/null -w '%{redirect_url}' "$url")
+    echo "  -> ${loc%%code=*}code=..." >> "${STUDIO_DIR:-/home/user/studio}/opened-urls.log"
+    case "$loc" in
+      roblox-studio-auth*) (cd "${STUDIO_DIR:-/home/user/studio}/app" && setsid wine RobloxStudioBeta.exe "$loc" >/dev/null 2>&1 &) ;;
+    esac ;;
+  roblox-studio*) (cd "${STUDIO_DIR:-/home/user/studio}/app" && setsid wine RobloxStudioBeta.exe "$url" >/dev/null 2>&1 &) ;;
+esac
+exit 0
