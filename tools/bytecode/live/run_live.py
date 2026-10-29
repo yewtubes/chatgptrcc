@@ -22,6 +22,7 @@ OUT.mkdir(parents=True,exist_ok=True)
 env=dict(os.environ,WINEPREFIX=str(STUDIO/'prefix'),WINEARCH='win64',WINEDEBUG='-all',WINEDLLOVERRIDES='mscoree,mshtml=',
          STUDIO_BACKEND_LOG=str(OUT/'studio-backend.log'),LOCAL_RCC_LOG='Z:'+str(OUT/'compiler.log'),LOCAL_RCC_AUDIT_DIR='Z:'+str(OUT/'sender'),
          RCC_HOST='127.0.0.1',RCC_PORT='53680',PLACE_ID='1818',STUDIO_PLACE_ID='1818',LP_NUM_THREADS='1')
+env['STUDIO_WINEDEBUG']='-all,err+all,warn+module,warn+seh'
 cpus=sorted(os.sched_getaffinity(0));split=max(1,len(cpus)//2)
 env['STUDIO_CPUS']=','.join(map(str,cpus[:split]));browser_cpus=cpus[split:] or cpus[:1]
 username=getpass.getuser()
@@ -70,6 +71,9 @@ try:
     time.sleep(2)
     if display.poll() is not None:raise RuntimeError('isolated Xvfb failed')
     with open(OUT/'wineboot.log','wb') as f:run(['wineboot','-i'],timeout=120,stdout=f,stderr=subprocess.STDOUT)
+    run(['wineserver','-w'],timeout=120)
+    with open(OUT/'wine-paths.log','wb') as f:
+        run(['wine','cmd','/c','echo %USERNAME% %LOCALAPPDATA%'],stdout=f,stderr=subprocess.STDOUT)
     run(['tools/studio/make_tls.sh'],stdout=subprocess.DEVNULL)
     with open(STUDIO/'app/ssl/cacert.pem','ab') as f:f.write(b'\nLocal Roblox Backend CA\n'+(ROOT/'backend-tls/ca.crt').read_bytes())
     run(['node','-e',"require('./tools/backend/db.js').open()"],stdout=subprocess.DEVNULL)
@@ -107,13 +111,20 @@ try:
     result['controls_fixed']=result['baseline']['small_probe_executed'] and not result['baseline']['player_module_corrupted']
     if not result['baseline']['replicator_created']:raise RuntimeError('baseline did not reach Replicator creation')
     if not rows:raise RuntimeError('no actual VM loader captures recorded')
+except Exception as error:
+    result['failure']=str(error)
+    raise
 finally:
+    with open(OUT/'processes.log','wb') as f:
+        subprocess.run(['ps','-eo','pid,ppid,stat,etime,args'],stdout=f,check=False)
+    subprocess.run(['scrot',str(OUT/'studio-desktop.png')],env=env,timeout=20,check=False)
     for p in reversed(processes):
         if p.poll() is None:
             try:os.killpg(p.pid,signal.SIGTERM)
             except ProcessLookupError:pass
     subprocess.run(['wineserver','-k'],env=env,cwd=ROOT,timeout=20,check=False)
-    for file in logs.glob('*.log') if logs.exists() else []:
+    # Wine user names can differ from the runner account; collect only this prefix.
+    for file in (STUDIO/'prefix/drive_c/users').glob('*/AppData/Local/Roblox/**/*.log'):
         (OUT/('studio-'+file.name)).write_bytes(file.read_bytes())
     file=ROOT/'webclient/live/version-75f1039cb4964863/WebClient.wasm'
     if file.exists():result['webclient_sha256_after']=hashlib.sha256(file.read_bytes()).hexdigest()

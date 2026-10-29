@@ -23,7 +23,7 @@ fi
 LRM=$ROOT/local_rcc_modern/build-win
 S=${STUDIO_DIR:-/home/user/studio}
 export PATH=$ROOT/tools/studio/bin:$S/bin:$PATH NO_PROXY="$NO_PROXY,.robloxlabs.com" no_proxy="$NO_PROXY,.robloxlabs.com"
-export WINEPREFIX=$S/prefix WINEDEBUG=-all WINEARCH=win64 WINEDLLOVERRIDES="mscoree,mshtml="
+export WINEPREFIX=$S/prefix WINEDEBUG=${STUDIO_WINEDEBUG:--all} WINEARCH=win64 WINEDLLOVERRIDES="mscoree,mshtml="
 WINUSER=$(whoami)
 stage=$WINEPREFIX/drive_c/users/$WINUSER/AppData/Local/Roblox
 logs=$stage/logs
