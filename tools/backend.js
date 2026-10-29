@@ -126,6 +126,11 @@ function apiBase(req) {
   const h = req.headers['x-original-host'] || 'apis.roblox.com';
   return `https://${h.replace(/^[^.]+\./, 'apis.')}`;
 }
+function securityCookie(req) {
+  const domain = (req.headers['x-original-host'] || 'www.roblox.com').replace(/^[^.]+/, '');
+  return `.ROBLOSECURITY=_|WARNING:-DO-NOT-SHARE-THIS.--Local-backend-session|_${USER.id}; domain=${domain}; ` +
+    'path=/; expires=Fri, 01 Jan 2100 00:00:00 GMT; secure; HttpOnly; SameSite=Lax';
+}
 function newToken() { return crypto.randomBytes(24).toString('hex'); }
 function issueTokens(scope) {
   const access = newToken(), refresh = newToken();
@@ -185,12 +190,15 @@ const ROUTES = [
     codes.delete(p.code);
     const out = issueTokens(c.scope || p.scope);
     console.log(`backend: oauth ${p.grant_type} -> tokens for ${USER.name}`);
+    // Studio waits for a .ROBLOSECURITY cookie after login before it leaves the login screen.
+    res.setHeader('Set-Cookie', securityCookie(req));
     json(res, 200, out);
   }],
   [/^apis\.roblox\.com$/, /^\/oauth\/v1\/userinfo/, (req, res) => json(res, 200, {
     sub: String(USER.id), name: USER.displayName, nickname: USER.displayName, preferred_username: USER.name,
-    created_at: 1136073600, profile: `https://www.roblox.com/users/${USER.id}/profile`, picture: null,
-    email: 'player1@localhost', email_verified: true, verified: true, age_checked: true, age_bracket: 0,
+    created_at: 1136073600, profile: `https://www.roblox.com/users/${USER.id}/profile`,
+    picture: `https://tr.rbxcdn.com/30DAY-AvatarHeadshot-${USER.id}/150/150/AvatarHeadshot/Png/noFilter`,
+    email: 'player1@localhost', email_verified: true, verified: true, age_checked: true, age_bracket: 'Age13OrOver',
     premium: false, roles: [], internal_user: false, attributes: {},
   })],
   [/^apis\.roblox\.com$/, /^\/oauth\/v1\/certs/, (req, res) => json(res, 200, { keys: [] })],
