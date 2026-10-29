@@ -1,0 +1,34 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "Builder",
+      "displayName": "Builder",
+      "description": "Owner of this platform's default experiences. Studio signs in as this account.",
+      "birthdate": "2000-01-01",
+      "isService": true
+    }
+  ],
+  "universes": [
+    {
+      "id": 1,
+      "rootPlaceId": 1818,
+      "name": "Baseplate",
+      "description": "The default experience, hosted by the local Studio game server.",
+      "creatorType": "User",
+      "creatorId": 1,
+      "maxPlayers": 10,
+      "places": [{ "id": 1818, "file": "places/Baseplate.rbxlx" }]
+    },
+    {
+      "id": 2,
+      "rootPlaceId": 1819,
+      "name": "ROBLOX World Headquarters",
+      "description": "From Roblox/Old-Open-Source-Levels.",
+      "creatorType": "User",
+      "creatorId": 1,
+      "maxPlayers": 10,
+      "places": [{ "id": 1819, "file": "places/WorldHQ.rbxl" }]
+    }
+  ]
+}

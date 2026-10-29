@@ -45,6 +45,7 @@ function metadata() {
 // proxy is enabled; WebClient.js and WasmLoader.js rewrite the rest). They are
 // answered by the local backend; nothing is forwarded to Roblox.
 const backend = require('./backend.js');
+const auth = require('./backend/auth.js');
 function proxy(req, res, rest) {
   let target = decodeURIComponent(rest).replace(/^(https?):\/(?!\/)/, '$1://');
   if (!/^https?:\/\//.test(target)) target = 'https://' + target;
@@ -62,8 +63,17 @@ const server = http.createServer((req, res) => {
   if (p.includes('..')) return send(res, 400, 'bad path');
   if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', '*'); return send(res, 204, ''); }
   if (req.url.startsWith('/proxy/')) return proxy(req, res, req.url.slice('/proxy/'.length));
+  // The platform's own API (accounts, server registration, render jobs).
+  if (p.startsWith('/api/local/')) return backend.handle(req, res, `https://local${req.url}`);
+  // Sign-in and sign-up pages for local platform accounts.
+  if (p === '/login' || p === '/signup') return serveFile(req, res, path.join(ROOT, 'pages', 'login.html'));
   // Roblox's own play page (tools/fetch_webclient.sh), with site-shim.js loaded first.
+  // It needs a signed-in local account; without one the browser goes to /login first.
   if (p === '/games/start') {
+    if (!auth.userFromRequest(req)) {
+      res.writeHead(302, { Location: `/login?returnUrl=${encodeURIComponent(req.url)}` });
+      return res.end();
+    }
     const html = fs.readFileSync(path.join(ROOT, 'site', 'games', 'start.html'), 'utf8');
     log(req, 200);
     return send(res, 200, html.replace('<head>', '<head><script src="/site-shim.js"></script>'), 'text/html');

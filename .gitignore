@@ -12,3 +12,4 @@ backend-tls/*.log
 backend-tls/*.srl
 webclient/live/
 webclient/site/
+data/
