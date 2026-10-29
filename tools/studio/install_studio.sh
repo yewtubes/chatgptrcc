@@ -52,5 +52,8 @@ grep -q 'Local Roblox Backend CA' "$APP/ssl/cacert.pem" 2>/dev/null || {
   printf '\nLocal Roblox Backend CA\n' >> "$APP/ssl/cacert.pem"; cat "$ROOT/backend-tls/ca.crt" >> "$APP/ssl/cacert.pem"; }
 export WINEPREFIX=$S/prefix WINEDEBUG=-all WINEARCH=win64
 [ -d "$WINEPREFIX/drive_c" ] || { pgrep -x Xvfb >/dev/null || (setsid Xvfb :78 -screen 0 1280x800x24 >/dev/null 2>&1 &); sleep 1; DISPLAY=:78 WINEDLLOVERRIDES="mscoree,mshtml=" wineboot -i; wineserver -w; }
+# The installed build, for the backend's client-version/WindowsStudio64 answer.
+ver=$(curl -fsS https://clientsettingscdn.roblox.com/v2/client-version/WindowsStudio64 | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["version"] if d["clientVersionUpload"]==sys.argv[1] else "")' "$VER" || true)
+printf '{"version":"%s","clientVersionUpload":"%s","bootstrapperVersion":""}\n' "${ver:-${STUDIO_VERSION:-0.745.0.7451137}}" "$VER" > "$S/version.json"
 sha256sum "$APP/RobloxStudioBeta.exe"
 echo "studio $VER -> $APP"

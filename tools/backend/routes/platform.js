@@ -81,6 +81,12 @@ const ROUTES = [
     if (!live) return notFound(res, 'web client build (run tools/fetch_webclient.sh)');
     json(res, 200, read(path.join(live, 'client-version.json')));
   }],
+  // Studio's update check: the build tools/studio/install_studio.sh installed, so it never offers an update.
+  ['GET', /^clientsettings(cdn)?\.roblox\.com$/, /^\/v2\/client-version\/WindowsStudio64/, (req, res) => {
+    const v = read(path.join(process.env.STUDIO_DIR || '/home/user/studio', 'version.json'));
+    if (!v) return notFound(res, 'installed Studio version (run tools/studio/install_studio.sh)');
+    json(res, 200, v);
+  }],
   ['GET', /^clientsettings(cdn)?\.roblox\.com$/, /^\/v2\/user-channel/, // No channel assignment: the default (production) channel, as before.
     (req, res) => json(res, 200, {})],
   ['GET', /^setup\.rbxcdn\.com$/, /^\/webclient\/(version-[0-9a-f]+)-RobloxWebClient\//, webClientFile],

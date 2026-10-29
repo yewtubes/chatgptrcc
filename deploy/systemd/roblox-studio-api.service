@@ -1,0 +1,16 @@
+# The same API over HTTPS on *.sitetest1.robloxlabs.com for Studio (port 443).
+[Unit]
+Description=Self-hosted Roblox API for Studio (tools/studio_backend.js)
+After=network-online.target
+
+[Service]
+User=roblox
+WorkingDirectory=/opt/robloxwebclient
+Environment=HTTPS_PORT=443 DATA_DIR=/var/lib/roblox-platform STUDIO_OAUTH_USER=Builder
+EnvironmentFile=-/etc/roblox-platform.env
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/bin/node tools/studio_backend.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

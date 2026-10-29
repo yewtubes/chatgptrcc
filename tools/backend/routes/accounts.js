@@ -227,6 +227,14 @@ const ROUTES = [
   // Moderation state from the account: banned accounts get a ban record.
   ['GET', /^usermoderation\.roblox\.com$/, /^\/v1\/not-approved/, (req, res, u, b, { user }) =>
     json(res, 200, user && user.is_banned ? { punishedUserId: user.id, messageToUser: 'Account banned on this platform.', punishmentTypeDescription: 'Ban' } : {})],
+  // Logout: ends the session the request was made with (web cookie or Studio's .ROBLOSECURITY).
+  ['POST', /^auth\.roblox\.com$/, /^\/v[12]\/logout$/, (req, res) => {
+    const c = require('../http.js').cookies(req);
+    if (c[A.WEB_COOKIE]) A.revokeSession(c[A.WEB_COOKIE]);
+    const sec = c['.ROBLOSECURITY'];
+    if (sec && sec.startsWith(A.STUDIO_PREFIX)) A.revokeSession(sec.slice(A.STUDIO_PREFIX.length));
+    json(res, 200, {});
+  }],
   ['POST', /^apis\.roblox\.com$/, /^\/validate-machine/, (req, res) => json(res, 200, { success: true, isValid: true, messages: [] })],
 ];
 
