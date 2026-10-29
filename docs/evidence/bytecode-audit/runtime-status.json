@@ -1,0 +1,17 @@
+{
+  "live_join_run": false,
+  "source_commit": "f09b616b710a028ae22635d3f56b98162ef8895f",
+  "blockers": [
+    "Studio/Wine not installed; package cache permission failures prevented installation",
+    "Chromium download returned invalid/truncated archives"
+  ],
+  "transport_unchanged_verified": false,
+  "seven_localscripts_fixed": false,
+  "webclient_modified": false,
+  "original_studio_processes_or_database_accessed": false,
+  "baseline_decoder_reproducer": {
+    "corrupt_accepted": false,
+    "output_preserved": false,
+    "output_size": 512
+  }
+}

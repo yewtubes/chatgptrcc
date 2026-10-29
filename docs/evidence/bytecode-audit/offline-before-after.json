@@ -1,0 +1,9 @@
+{
+  "stage": "rsb1",
+  "equal": true,
+  "server_size": 369,
+  "client_size": 369,
+  "server_sha256": "ac19900cf40f373310190ea8a2eb5b40fcc4495c383ce49018b37c6b6066a4dc",
+  "client_sha256": "ac19900cf40f373310190ea8a2eb5b40fcc4495c383ce49018b37c6b6066a4dc",
+  "first_difference": null
+}

@@ -1,0 +1,39 @@
+name: Independent bytecode audit
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Import the frozen source into this independent repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream_commit=f09b616b710a028ae22635d3f56b98162ef8895f
+          git config user.name 'Robluc bytecode audit'
+          git config user.email 'actions@users.noreply.github.com'
+          git remote add audit-source https://github.com/yewtubes/robloxwebclient.git
+          git remote set-url --push audit-source DISABLED
+          git fetch --no-tags audit-source claude/modest-bell-uutg9v
+          git cat-file -e "$upstream_commit^{commit}"
+          if ! git merge-base --is-ancestor "$upstream_commit" HEAD; then
+            git merge --allow-unrelated-histories -X ours --no-edit "$upstream_commit"
+          fi
+      - name: Build host diagnostics (no client or Studio patches)
+        run: |
+          cmake -S local_rcc_modern -B local_rcc_modern/build-host -DCMAKE_BUILD_TYPE=Release
+          cmake --build local_rcc_modern/build-host --parallel 2
+      - name: Run regression tests
+        run: |
+          ctest --test-dir local_rcc_modern/build-host --output-on-failure
+          python3 -m unittest discover -s tools/bytecode -v
+      - name: Publish the verified independent source snapshot
+        run: git push origin HEAD:main

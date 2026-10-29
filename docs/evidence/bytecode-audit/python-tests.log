@@ -1,0 +1,8 @@
+test_full_binary_comparison (test_compare_capture.CaptureTests.test_full_binary_comparison) ... ok
+test_code_offsets (test_wasm_profile.ReaderTests.test_code_offsets) ... ok
+test_leb_and_truncation (test_wasm_profile.ReaderTests.test_leb_and_truncation) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.016s
+
+OK

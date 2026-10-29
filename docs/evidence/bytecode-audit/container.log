@@ -1,0 +1,99 @@
+ok   external little-endian RSB1 fixture
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   truncation rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   single-byte corruption rejected
+ok   failure is transactional
+ok   huge claimed size rejected before allocation
+ok   failure is transactional
+ok   claimed size mismatches zstd content size
+ok   failure is transactional
+ok   concatenated frames rejected
+ok   failure is transactional
+ok   trailing compressed data rejected
+ok   failure is transactional
+ok   caller size limit
+ok   failure is transactional
+ok   exact caller size limit accepted
+ok   binary round trip including NUL/high bytes
+ok   binary round trip including NUL/high bytes
+ok   binary round trip including NUL/high bytes
+ok   binary round trip including NUL/high bytes
+ok   binary round trip including NUL/high bytes
+ok   compiler errors preserved as binary error messages
+0 failure(s)

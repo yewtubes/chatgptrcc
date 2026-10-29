@@ -1,0 +1,9 @@
+{
+  "stage": "opcode-encoded-luau",
+  "equal": true,
+  "server_size": 512,
+  "client_size": 512,
+  "server_sha256": "2104c547ab6467f0a68e3339dcb8ee05ffd7122307bf9fd88dc1dc4ab762c794",
+  "client_sha256": "2104c547ab6467f0a68e3339dcb8ee05ffd7122307bf9fd88dc1dc4ab762c794",
+  "first_difference": null
+}

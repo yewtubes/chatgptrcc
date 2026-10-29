@@ -1,0 +1,19 @@
+{
+  "webclient_sha256": "d72c52618f5c153c9b17a97e644914d43918c7122d754d96f79e8323acc6a15d",
+  "static_only": true,
+  "loader_defined_index": 149791,
+  "loader_function_index": 150064,
+  "loader_body_offset": 86082273,
+  "loader_first_instruction": 86082284,
+  "loader_body_size": 18759,
+  "loader_sha256": "0e0db0e3356dcef6039a898e90eb82d2757ee05f2b1e15d9a2f59537b3c93c52",
+  "bytecode_version_range": [
+    3,
+    14
+  ],
+  "type_version_range": [
+    1,
+    3
+  ],
+  "notes": "Ranges and validation gate were established from disassembly; fingerprints identify that evidence, not a live runtime result."
+}

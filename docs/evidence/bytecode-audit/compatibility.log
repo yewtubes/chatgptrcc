@@ -1,0 +1,16 @@
+ok   empty
+ok   recovered bytecode loads in pinned upstream VM
+case=empty version=13 types=3 bytes=36 instructions=2 aux=0
+ok   closure/table/loops
+ok   recovered bytecode loads in pinned upstream VM
+ok   recovered bytecode executes
+ok   execution returns 42
+case=closure/table/loops version=13 types=3 bytes=233 instructions=25 aux=4
+ok   imports/aux/vector
+ok   recovered bytecode loads in pinned upstream VM
+case=imports/aux/vector version=13 types=3 bytes=257 instructions=19 aux=6
+ok   unsupported bytecode version rejected
+ok   version failure has distinct diagnostic
+ok   unsupported type version rejected
+ok   type failure has distinct diagnostic
+0 failure(s)
