@@ -14,7 +14,8 @@ record that survives context loss.
 | Join through our backend (`tools/backend.js`) | works |
 | WebTransport handshake to Studio's RbxTransport | works when Studio and Chrome are on separate cores |
 | Replicator created, world and character replicate | works |
-| Game client scripts run (LocalScripts, Animate, PlayerModule) | **broken: the client receives 0-byte bytecode** |
+| Studio sends compiled script bytecode (`LOCAL_RCC=1`, `local_rcc_modern/`) | works |
+| Game client scripts run (LocalScripts, Animate, PlayerModule) | **blocked: the client rejects the bytecode in `luau_load` ("bytecode corrupted", integrity footer)** |
 
 ## How to reproduce the working connection
 
@@ -41,19 +42,44 @@ RCC_HOST=127.0.0.1 RCC_PORT=53640 taskset -c 2,3 node tools/run_headless.js 75 '
 - Logs of a good run: `screenshots/real-join.log` (Replicator created,
   then `CreatorError: Error: <script>` for every game script).
 
-## Studio binary patches (`tools/studio/patch_studio.py`)
+## Why Studio sent no bytecode, and the fix (`local_rcc_modern/`)
 
-Original kept as `/home/user/studio/app/RobloxStudioBeta.exe.orig`
-(sha256 781b36ed…). Applied:
+Two Studio stubs, both confirmed by disassembly (same causes as local_rcc
+describes for older Studio builds):
 
-1. `0x1460b5a32` `75 4b` → `90 90`: script registration compiles with target 2
-   even when the server is not in team-test mode. Confirmed effective:
-   with `DFLogTeamTest=7` the log shows `[DFLog::TeamTest] Compiling script: …`.
-2. Three `movzx r9d, byte [r14+8]` → `mov r9b,1` at 0x145f43fab / 0x145f456e9 /
-   0x145f47555 (the property serializer's calls to getBytecode 0x14604e1b0).
-   **No effect: gdb shows those sites and getBytecode are never reached during
-   a join.** These were a wrong guess. They should be reverted once the real
-   path is known; they are harmless for now.
+1. `LuaVM::compile` (0x142ae2d30) returns an empty string. Studio does call it
+   while registering replicated scripts, so every script's client bytecode is "".
+2. The NetworkSchema picks the `ProtectedString` format (0x14611bd0c–0x14611bd25):
+   ProtectedStringBytecode (0x2f) only if the predicate at 0x1407cced0 returns
+   true, but in Studio it's `xor al,al; ret`, so the schema says
+   ProtectedStringSource (6). Read-watching a registered script during a join
+   confirmed the source-format path: the serializer reads only the script's
+   16-byte content hash (written by 0x145fa3870, which queues the script) and a
+   dictionary step (0x145fa3500) decides whether to send the content; the
+   source text and the bytecode registry are never read.
+
+`local_rcc_modern` (see its README) fixes both for this exact build, after
+checking timestamp, image size and the original bytes: `LuaVM::compile` runs
+Luau 0.744 and wraps the result in local_rcc's RSB1 container, and the
+predicate call becomes `mov al,1`. Started with `LOCAL_RCC=1
+tools/studio/run_server.sh …`. Network setup unchanged (CPU pinning, port and
+cert discovery, `%2B`).
+
+Result (`docs/evidence/local-rcc-modern-*.log`): Studio compiles every
+replicated script (one Luau syntax error, in a 5.5 KB server script, line 118),
+the client joins as before, and now gets bytecode. Every game script then
+fails with `<script>: bytecode corrupted`. That is the client's `luau_load`
+rejecting bytecode without Roblox's integrity footer, which Luau's compiler
+doesn't produce. Faking that footer or turning the check off is out of scope
+for this project. `PlayerScriptsLoader` no longer appears in the errors; it
+fails on `require(PlayerModule)` instead ("Requested module experienced an
+error while loading").
+
+Earlier binary patches (`tools/studio/patch_studio.py`: force compile target 2,
+force getBytecode at three serializer call sites) were wrong guesses. Compile is
+a stub whatever the target, and the serializer sites are never reached in source
+mode. They're reverted: Studio runs from the original executable
+(sha256 781b36ed…) and the script is removed.
 
 ## Script bytecode: what is known
 
@@ -120,9 +146,9 @@ Original kept as `/home/user/studio/app/RobloxStudioBeta.exe.orig`
 
 ## Next steps
 
-1. Find the code that actually writes the script source/bytecode for a peer
-   (break on the 9 callers of `0x1460b03d0`, and on writes of
-   ProtectedString-typed properties), then compare with Studio's own client
-   joining the same server (`-task StartClient`), which works.
-2. Check whether the client asks for bytecode by hash on a separate
-   request (the `+0x1038` cache) that the browser never sends or gets no answer for.
+- Client scripts need bytecode the client accepts, with the integrity footer
+  Roblox's own servers produce. Studio has no compiler for that (it's a stub),
+  and this project doesn't forge or bypass the check, so it's open.
+- Unrelated to scripts: the place references assets the backend can't serve
+  (123480233606534, 2790382281, 2790390993, 3570695787, 9475422736:
+  "Authentication required to access Asset").
