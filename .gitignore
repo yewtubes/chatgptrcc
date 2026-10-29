@@ -1,2 +1,4 @@
 webclient/files/
 .pkgcache/
+screenshots/*.log
+webclient/WebClient.patched.wasm
