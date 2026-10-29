@@ -58,6 +58,7 @@ def fixtures():
 
 result={'live_join_run':False,'controls_fixed':False,'webclient_modified':False,'runtime':'Wine Staging 11.20 / Studio 0.745.0.7451137'}
 try:
+    run(['sudo','sysctl','-w','net.ipv4.ip_unprivileged_port_start=0'],stdout=subprocess.DEVNULL)
     for port in (443,18080,53680):
         with socket.socket() as s:s.bind(('127.0.0.1',port))
     # Name routing is confined to this fresh GitHub runner VM, never a shared project machine.
@@ -65,7 +66,6 @@ try:
     services=re.search(r'services="([^"]+)"',setup,re.S)[1].split()
     names=['sitetest1.robloxlabs.com']+[s+'.sitetest1.robloxlabs.com' for s in services]+['ephemeralcounters.api.sitetest1.robloxlabs.com','upload.crashes.rbxinfra.com']
     run(['sudo','tee','-a','/etc/hosts'],input=('\n# independent Robluc CI\n127.0.0.1 '+' '.join(names)+'\n').encode(),stdout=subprocess.DEVNULL)
-    run(['sudo','sysctl','-w','net.ipv4.ip_unprivileged_port_start=0'],stdout=subprocess.DEVNULL)
     display=start(['Xvfb',env.get('DISPLAY',':97'),'-screen','0','1280x800x24','-nolisten','tcp','-ac'],'xvfb.log')
     time.sleep(2)
     if display.poll() is not None:raise RuntimeError('isolated Xvfb failed')

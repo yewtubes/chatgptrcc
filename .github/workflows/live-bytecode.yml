@@ -28,6 +28,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            .live-runtime/*.deb
+            .live-runtime/chrome.zip
+            .live-runtime/wine-Packages
+            .live-runtime/studio/pkg
+            webclient/live/version-75f1039cb4964863
+          key: robluc-live-binaries-7451137-75f1039-11.20-151-v1
       - name: Install runner prerequisites
         run: |
           sudo apt-get update -qq
@@ -59,3 +68,13 @@ jobs:
           name: original-webclient-bytecode-${{ github.run_id }}
           path: ci-evidence/
           if-no-files-found: warn
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            .live-runtime/*.deb
+            .live-runtime/chrome.zip
+            .live-runtime/wine-Packages
+            .live-runtime/studio/pkg
+            webclient/live/version-75f1039cb4964863
+          key: robluc-live-binaries-7451137-75f1039-11.20-151-v1
