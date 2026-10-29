@@ -10,6 +10,7 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
 
 (async () => {
   const server = require('./server.js');
+  if (!server.listening) await new Promise((r) => server.once('listening', r));
   const browser = await chromium.launch({
     args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist',
       '--enable-features=WebAssemblyJSPromiseIntegration,SharedArrayBuffer',
@@ -21,6 +22,20 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },
   });
+  // Sign in with a local platform account (created on first use):
+  // ACCOUNT=<name> PASSWORD=<pw>; ACCOUNT=none runs signed out.
+  const account = process.env.ACCOUNT || 'Player1';
+  if (account !== 'none') {
+    const base = `http://127.0.0.1:${server.address().port}/api/local/auth`;
+    const cred = { username: account, password: process.env.PASSWORD || 'local-dev-password', displayName: account, birthdate: '2000-01-01' };
+    const post = (p) => fetch(`${base}/${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cred) });
+    let r = await post('login');
+    if (r.status === 403) r = await post('signup');
+    if (!r.ok) throw new Error(`sign-in as ${account} failed: HTTP ${r.status} ${await r.text()}`);
+    const token = /RBXLocalSession=([^;]+)/.exec(r.headers.get('set-cookie'))[1];
+    await context.addCookies([{ name: 'RBXLocalSession', value: token, domain: process.env.HOST || 'localhost', path: '/', httpOnly: true }]);
+    console.log(`signed in as ${account} (user ${(await r.json()).id})`);
+  }
   const page = await context.newPage();
   // VIDEO=1: capture frames with the DevTools screencast (lighter than
   // Playwright's recorder, which ran the page out of memory) and encode them

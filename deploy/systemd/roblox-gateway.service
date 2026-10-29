@@ -1,0 +1,18 @@
+# Web gateway: play page, original web client files, /proxy/ API, /api/local/.
+# Install: copy to /etc/systemd/system/, set User/WorkingDirectory/Environment, then
+#   systemctl daemon-reload && systemctl enable --now roblox-gateway
+[Unit]
+Description=Self-hosted Roblox web gateway (tools/server.js)
+After=network-online.target
+
+[Service]
+User=roblox
+WorkingDirectory=/opt/robloxwebclient
+Environment=PORT=8080 DATA_DIR=/var/lib/roblox-platform
+Environment=RCC_HOST=203.0.113.10
+EnvironmentFile=-/etc/roblox-platform.env
+ExecStart=/usr/bin/node tools/server.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
