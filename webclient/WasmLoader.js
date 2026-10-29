@@ -39,6 +39,18 @@
     getFlagOverrides: () => flagOverrides,
   };
 
+  // WasmPlayer.js hardcodes wss://localhost/local-relay for local RCC mode;
+  // use this server's relay instead.
+  const NativeWebSocket = window.WebSocket;
+  window.WebSocket = function (url, protocols) {
+    if (String(url) === 'wss://localhost/local-relay') {
+      url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/local-relay`;
+    }
+    return new NativeWebSocket(url, protocols);
+  };
+  window.WebSocket.prototype = NativeWebSocket.prototype;
+  Object.assign(window.WebSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
+
   const s = document.createElement('script');
   s.src = `${location.origin}/WasmPlayer.js`;
   document.head.appendChild(s);

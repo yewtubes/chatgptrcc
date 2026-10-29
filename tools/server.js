@@ -5,6 +5,7 @@
 // Sends COOP/COEP so SharedArrayBuffer is available.
 const http = require('http'), fs = require('fs'), path = require('path');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const ROOT = path.resolve(__dirname, '..', 'webclient');
 const PORT = +process.env.PORT || 8080;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json',
@@ -54,6 +55,29 @@ function proxy(req, res, rest) {
   let u;
   try { u = new URL(target); } catch { return send(res, 400, 'bad url'); }
   if (!PROXY_HOSTS.test(u.hostname)) return send(res, 403, 'host not allowed');
+  // Local game server: answer the place launcher with a join script that points
+  // at RCC_HOST:RCC_PORT (reached through /local-relay).
+  if (u.hostname === 'gamejoin.roblox.com' && /^\/v1\/join-game/.test(u.pathname)) {
+    const host = process.env.RCC_HOST || '127.0.0.1', port = +(process.env.RCC_PORT || 53640);
+    const placeId = +(process.env.PLACE_ID || 1818);
+    const session = JSON.stringify({ SessionId: crypto.randomUUID(), GameId: '00000000-0000-0000-0000-000000000001', PlaceId: placeId });
+    const joinScript = {
+      ClientPort: 0, MachineAddress: host, ServerPort: port,
+      ServerConnections: [{ Address: host, Port: port }], UdmuxEndpoints: [], DirectServerReturn: true,
+      TokenGenAlgorithm: 0, PepperId: 0, TokenValue: '', PingUrl: '', PingInterval: 0,
+      UserName: 'Player1', DisplayName: 'Player1', SeleniumTestMode: false, UserId: 1,
+      RobloxLocale: 'en_us', GameLocale: 'en_us', SuperSafeChat: false, FlexibleChatEnabled: false,
+      CharacterAppearance: '', ClientTicket: '', GameId: '00000000-0000-0000-0000-000000000001', PlaceId: placeId,
+      BaseUrl: 'https://www.roblox.com/', ChatStyle: 'ClassicAndBubble', CreatorId: 1, CreatorTypeEnum: 'User',
+      MembershipType: 'None', AccountAge: 365, CookieStoreFirstTimePlayKey: '', CookieStoreFiveMinutePlayKey: '',
+      CookieStoreEnabled: false, IsUnknownOrUnder13: false, GameChatType: 'AllUsers', SessionId: session,
+      AnalyticsSessionId: '', DataCenterId: 0, UniverseId: 1, FollowUserId: 0, characterAppearanceId: 1,
+      CountryCode: 'US', RandomSeed1: '', ClientPublicKeyData: '',
+    };
+    console.log(`gamejoin: join script -> ${host}:${port}`);
+    return send(res, 200, JSON.stringify({ jobId: '00000000-0000-0000-0000-000000000001', status: 2, statusData: null,
+      joinScriptUrl: null, authenticationUrl: null, authenticationTicket: null, message: null, joinScript, queuePosition: 0 }), 'application/json');
+  }
   // Telemetry stays local.
   if (/^(ephemeralcounters\.api|ecsv2|client-telemetry|metrics|lms|tracing)\.roblox\.com$/.test(u.hostname) ||
       /experience-signals-ingest|\/pbe$|otel|analytics|telemetry/.test(u.pathname)) {
@@ -110,6 +134,11 @@ const server = http.createServer((req, res) => {
     return serveFile(req, res, hit || candidates[2]);
   }
   return serveFile(req, res, path.join(ROOT, p));
+});
+// RCC_HOST/RCC_PORT override where "forward <host>:<port>" goes (e.g. a Studio
+// test server on another machine).
+require('./relay.js').attach(server, '/local-relay', {
+  resolve: (h, p) => [process.env.RCC_HOST || h, +(process.env.RCC_PORT || p)],
 });
 server.listen(PORT, () => console.log(`web client on http://localhost:${PORT}/`));
 module.exports = server;

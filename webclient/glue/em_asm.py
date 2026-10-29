@@ -25,8 +25,8 @@ snippets = {
   9460665: "return performance.now();",
   9460695: "if (window.__onExperienceJoined) window.__onExperienceJoined($0);",
   9460761: "return window.__wasmPreInitTime || performance.now();",
-  # game exit: (isLeave, statusCode, message, i64 lo, hi)
-  9460803: "console.log('[rbx] game exit', $0, $1, " + U + "($2)); if (window.__resolveGameExit) window.__resolveGameExit({reason: $0 ? 'leave' : 'native_exit', statusCode: $1, errorMessage: " + U + "($2)});",
+  # loading status update: (flag, code, message, i64 lo, hi), e.g. "Loading experience..."
+  9460803: "console.log('[rbx] status', $0, $1, " + U + "($2));",
   # main() entry
   9461089: "console.log('[rbx] main() entered'); return 0;",
   # WebView (mutate/close webview and tabs): not supported here
