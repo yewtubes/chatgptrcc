@@ -5,12 +5,19 @@ This repo runs Roblox's WebAssembly client (`webclient/WebClient.wasm`,
 without any Roblox web infrastructure. Some parts of the original deployment
 were never shipped, so they are rebuilt here.
 
+Nothing talks to Roblox at runtime: `tools/backend.js` answers every web API
+call the client makes, and assets come from a local store (`webclient/assets/`,
+filled with `tools/import_asset.js`). Roblox's servers are only used once, by
+`tools/fetch_content.sh`, to download the public client packages.
+
 What works:
 
 - The engine boots, runs its main loop and renders with WebGL2 (headless
   Chromium with SwiftShader is enough).
 - Play Solo: ROBLOX World Headquarters (from Roblox/Old-Open-Source-Levels)
-  loads, a local player spawns, and WASD/space/mouse controls work.
+  loads, a classic R6 character (built from plain parts, with procedural
+  walking) spawns, and WASD/space/mouse controls work. The 2026 in-game
+  CoreScripts run too: topbar, chat, player list, backpack hotbar.
 - The networked join path up to the wire: fake place-launcher response, the
   `local-relay` WebSocket transport, and a WebSocket→UDP relay. The client
   sends RakNet connection requests to `RCC_HOST:RCC_PORT`.
@@ -52,7 +59,8 @@ RCC_PORT=<udp port> node tools/server.js` and open
 | `webclient/glue/rbxlib.js` | Reimplemented Roblox imports: fibers on JSPI, main-thread futex wait, synchronous asset fetch, ring buffers, host info, text input, GL buffer mapping, and stubs for the OPFS cache, RNA transport and WebView |
 | `webclient/glue/em_asm.py` | The 65 EM_ASM snippets, rebuilt from their call sites (the code strings were stripped from the wasm) |
 | `webclient/WasmLoader.js`, `WebClient.html` | The loader context and page that WasmPlayer.js expects, plus local dev settings |
-| `tools/server.js` | Dev server: COOP/COEP, content overlay, metadata rewritten from disk, `/proxy/` for engine web requests (telemetry is answered locally), fake `gamejoin`, `/local-relay` |
+| `tools/server.js` | Dev server: COOP/COEP, content overlay, metadata rewritten from disk, `/proxy/` to the local backend, `/local-relay` |
+| `tools/backend.js` | Local Roblox web API: flags (`webclient/LocalFlags.json`), locale, users, avatar, asset delivery, thumbnails, policy, game join, telemetry sink. Unknown calls get a logged 404 |
 | `tools/patch_wasm.js` | Two local patches to the served wasm (the original file is untouched) |
 | `tools/luauc/` | Luau compiler that emits the client's bytecode format (opcodes ×227, 8-byte prefix) |
 | `tools/rbxm.js` | Binary rbxm/rbxl reader and writer |
@@ -75,12 +83,14 @@ GLSL ES 3.00 at `glShaderSource` time.
    lacks. Bytecode that has a footer still loads as before.
 
 ### Play Solo
-The Lua App DataModel loads `rbxasset://places/Mobile.rbxl`. The overlay
-serves the chosen place under that name and puts the compiled
-`PlaySolo.lua` in place of `PatchRoot.CoreScripts.LuaAppStarterScript` in
-`UniversalApp.rbxm`. The bootstrap calls `Players:CreateLocalPlayer()`,
-`RunService:Run()` and `player:LoadCharacter()`. Avatar assets need a login,
-so the character gets a classic look from built-in meshes.
+The Lua App DataModel loads `rbxasset://places/Mobile.rbxl`, and the overlay
+serves the chosen place under that name. The Lua App patch it serves is built
+from `InExperience.rbxm`, the 2026 in-game CoreScripts and CorePackages. In
+that patch, the test-only module `CoreScripts/jest.config` is renamed to
+`LuaAppStarterScript` (the module the engine starts) and given the compiled
+`PlaySolo.lua`. The bootstrap calls `Players:CreateLocalPlayer()` and
+`RunService:Run()`, builds the character, and then starts the real
+`StarterScript` with `ScriptContext:AddCoreScriptLocal`.
 
 ### Rebuilding WebClient.js
 Rebuilding is only needed after changing `rbxlib.js` or `em_asm.py`. It needs

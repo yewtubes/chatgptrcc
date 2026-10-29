@@ -204,6 +204,14 @@ task.spawn(function()
 		root.CFrame = CFrame.new(0, 103, 0)
 	end)
 	log("ready")
+
+	-- Start the in-game CoreScripts (topbar, chat, backpack, player list, ...)
+	-- from the in-experience patch this bootstrap ships in.
+	try("StarterScript", function()
+		local robloxGui = game:GetService("CoreGui"):WaitForChild("RobloxGui", 10)
+		game:GetService("ScriptContext"):AddCoreScriptLocal("StarterScript", robloxGui)
+		log("StarterScript started")
+	end)
 end)
 
 return {}
