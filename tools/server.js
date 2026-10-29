@@ -33,7 +33,9 @@ function metadata() {
   const files = JSON.parse(fs.readFileSync(path.join(ROOT, 'WebClient.metadata.json'), 'utf8'));
   const out = [];
   for (const f of files) {
-    try { out.push({ path: f.path, size: fs.statSync(path.join(ROOT, 'files', f.path)).size }); } catch {}
+    for (const dir of ['overlay', 'files']) {
+      try { out.push({ path: f.path, size: fs.statSync(path.join(ROOT, dir, f.path)).size }); break; } catch {}
+    }
   }
   console.log(`metadata: ${out.length}/${files.length} files present`);
   return (metadataCache = JSON.stringify(out));
@@ -53,8 +55,9 @@ const server = http.createServer((req, res) => {
     return serveFile(req, res, path.join(ROOT, 'WebClient.patched.wasm'));
   if (p.startsWith('/engine/')) {
     const rel = p.slice('/engine/'.length);
-    const direct = path.join(ROOT, rel);
-    return fs.stat(direct, (err, st) => serveFile(req, res, !err && st.isFile() ? direct : path.join(ROOT, 'files', rel)));
+    const candidates = [path.join(ROOT, rel), path.join(ROOT, 'overlay', rel), path.join(ROOT, 'files', rel)];
+    const hit = candidates.find((f) => { try { return fs.statSync(f).isFile(); } catch { return false; } });
+    return serveFile(req, res, hit || candidates[2]);
   }
   return serveFile(req, res, path.join(ROOT, p));
 });
