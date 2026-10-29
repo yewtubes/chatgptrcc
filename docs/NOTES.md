@@ -132,10 +132,6 @@ EM_CONFIG=... tools/build_glue.sh
 - Studio gets its own production flags (`webclient/flags/PCStudioApp.json`,
   fetched once from clientsettingscdn) plus `PCStudioApp.local.json`.
 
-WASM client status: with `RBX_TRANSPORT_PORT` set, the join script carries
-`NetStackPort`/`NetStackTokenValue`, and the client selects RbxTransport like
-Studio's client does. In the browser that transport runs through the
-`rbx_wasm_rna_*` imports (WebTransport sessions, streams and datagrams with
-ring buffers back into the engine), which `rbxlib.js` still stubs. That binding
-is the remaining piece. Over RakNet the Studio server rejects the handshake
-(connection error 6).
+WASM client status: Roblox's own web client joins over RbxTransport/WebTransport
+and the Replicator is created. Game scripts still arrive with empty bytecode.
+Details, patches and reproduction steps: `docs/STUDIO_SERVER_JOIN.md`.

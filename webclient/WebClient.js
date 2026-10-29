@@ -7151,6 +7151,7 @@ async function createWasm() {
     };
 
   var _js_init_ring_buffers = (header, channels) => {
+      globalThis.__rbxHeap = () => HEAPU8; // for DevTools debugging (tools/debug_break.js)
       Module._ringHeaderAddr = header;
       Module._ringChannelsAddr = channels;
     };
@@ -7250,8 +7251,11 @@ async function createWasm() {
       var url = UTF8ToString(urlPtr);
       var hashes = [];
       for (var i = 0; i < ncerts; i++) {
-        var hex = UTF8ToString(HEAP32[(certs >> 2) + i]).replace(/[^0-9a-f]/gi, '');
-        hashes.push({ algorithm: 'sha-256', value: new Uint8Array(hex.match(/../g).map((x) => parseInt(x, 16))) });
+        // NetStackConfig certHashes: base64 SHA-256 digests (hex also accepted).
+        var str = UTF8ToString(HEAP32[(certs >> 2) + i]);
+        var value = /^[0-9a-f]{64}$/i.test(str) ? str.match(/../g).map((x) => parseInt(x, 16))
+          : Array.from(atob(str), (ch) => ch.charCodeAt(0));
+        hashes.push({ algorithm: 'sha-256', value: new Uint8Array(value) });
       }
       console.log('[rna] connect', url, hashes.length ? 'pinned cert' : 'no cert hash');
       var c = rbxRna.conns[h] = { h, ring, headPtr, tailPtr, slotSize, slots, queue: [], streams: new Map(),

@@ -14,8 +14,12 @@ mkdir -p "$stage" && cp "$place" "$stage/server.rbxl" || exit 1
 pgrep -x Xvfb >/dev/null || (setsid Xvfb :78 -screen 0 1280x800x24 >/dev/null 2>&1 &)
 sleep 1
 export DISPLAY=:78
+# The server's 3D view renders with llvmpipe and would take every core; keep it
+# to STUDIO_CPUS so clients on the same machine (Chrome) aren't starved, which
+# otherwise stalls the WebTransport handshake past Chromium's 4 s timeout.
+export LP_NUM_THREADS=${LP_NUM_THREADS:-1}
 cd $S/app
-exec ${WRAP:-} wine RobloxStudioBeta.exe -creatorId 0 -placeVersion 0 -task StartServer \
+exec ${WRAP:-} taskset -c ${STUDIO_CPUS:-0,1} wine RobloxStudioBeta.exe -creatorId 0 -placeVersion 0 -task StartServer \
   -localProjectFile "C:/users/root/AppData/Local/Roblox/server.rbxl" -placeId 0 -universeId 0 \
   -port "$port" -creatorType 0 -numTestServerPlayersUponStartup 0 \
   -userid 1 -baseUrl https://www.sitetest1.robloxlabs.com -channel production \

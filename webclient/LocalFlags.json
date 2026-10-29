@@ -22790,5 +22790,8 @@
 "UseApplicationLifecycleCallbacks": "false",
 "UseApplicationLifecycleCallbacks2": "True",
 "UseDefaultAppPromoCTAText": "true",
-"ValidateContentProviderCaller": "True"
+"ValidateContentProviderCaller": "True",
+"DFFlagDebugRbxTransportUseTestKey": "True",
+"FFlagDebugRbxTransportUseTestKey": "True",
+"DFFlagRbxTransportCertHashesInNetStackConfig": "True"
 }

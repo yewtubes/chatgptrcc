@@ -1,1 +1,4 @@
-{"DFFlagRbxTransportRtcIoSelfSignedCertRotation": "True"}
+{
+  "DFFlagRbxTransportRtcIoSelfSignedCertRotation": "True",
+  "DFLogTeamTest": "7"
+}

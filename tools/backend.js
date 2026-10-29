@@ -93,6 +93,56 @@ const AVATAR = {
   emotes: [],
 };
 
+// RbxTransport (WebTransport over HTTP/3) endpoint of the game server, as the
+// web client needs it: port, FQDN and the SHA-256 of the server's self-signed
+// certificate, which Studio rotates, so it is read from the server per join.
+// The newest web client build in webclient/live/ (tools/fetch_webclient.sh).
+function liveWebClient() {
+  const dir = path.join(ROOT, 'webclient', 'live');
+  try {
+    const builds = fs.readdirSync(dir).map((d) => path.join(dir, d)).filter((d) => fs.existsSync(path.join(d, 'client-version.json')));
+    return builds.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] || null;
+  } catch (e) { return null; }
+}
+
+// Studio picks the RbxTransport port itself; it is logged at server start.
+function studioRbxTransportPort() {
+  const dir = process.env.STUDIO_LOGS || '/home/user/studio/prefix/drive_c/users/root/AppData/Local/Roblox/logs';
+  try {
+    const logs = fs.readdirSync(dir).filter((f) => f.endsWith('.log'))
+      .map((f) => path.join(dir, f)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    for (const f of logs) {
+      const m = /Started RbxTransport network server [\d.]+\|(\d+)/.exec(fs.readFileSync(f, 'latin1'));
+      if (m) return +m[1];
+    }
+  } catch (e) {}
+  return 0;
+}
+
+function rbxTransport(host) {
+  const port = +(process.env.RBX_TRANSPORT_PORT || studioRbxTransportPort());
+  if (!port) return {};
+  let hash = '';
+  try {
+    hash = require('child_process').execFileSync('python3',
+      [path.join(__dirname, 'studio', 'wt_cert_hash.py'), String(port), host], { timeout: 8000 }).toString().trim();
+  } catch (e) {
+    console.log(`backend: no RbxTransport server at ${host}:${port}`);
+    return {};
+  }
+  console.log(`backend: RbxTransport ${host}:${port} cert ${hash}`);
+  return {
+    NetStackPort: port,
+    // Studio's local servers accept the token "local_test" (as its own clients send it).
+    NetStackTokenValue: Buffer.from('local_test').toString('base64'),
+    GameFqdn: host,
+    // certHashes are base64 SHA-256 digests (WebClient.js decodes them with atob).
+    // The engine form-decodes the value on the way (a '+' arrives as a space),
+    // so '+' is sent percent-encoded.
+    NetStackConfig: JSON.stringify({ certHashes: [Buffer.from(hash, 'hex').toString('base64').replace(/\+/g, '%2B')] }),
+  };
+}
+
 function joinScript(placeId) {
   const host = process.env.RCC_HOST || '127.0.0.1', port = +(process.env.RCC_PORT || 53640);
   const gameId = '00000000-0000-0000-0000-000000000001';
@@ -104,9 +154,7 @@ function joinScript(placeId) {
     joinScript: {
       ClientPort: 0, MachineAddress: host, ServerPort: port,
       ServerConnections: [{ Address: host, Port: port }], UdmuxEndpoints: [], DirectServerReturn: true,
-      // Studio's local server also listens with RbxTransport (RBX_TRANSPORT_PORT); Studio's
-      // own client connects there with the token "local_test".
-      ...(process.env.RBX_TRANSPORT_PORT ? { NetStackPort: +process.env.RBX_TRANSPORT_PORT, NetStackTokenValue: 'bG9jYWxfdGVzdA==', GameFqdn: host, ...(process.env.RBX_TRANSPORT_CERT ? { NetStackConfig: JSON.parse(process.env.NETSTACK_SHAPE || 'null') ?? { certHashes: [process.env.RBX_TRANSPORT_CERT] } } : {}) } : {}),
+      ...rbxTransport(host),
       TokenGenAlgorithm: 0, PepperId: 0, TokenValue: '', PingUrl: '', PingInterval: 0,
       UserName: USER.name, DisplayName: USER.displayName, SeleniumTestMode: false, UserId: USER.id,
       RobloxLocale: 'en_us', GameLocale: 'en_us', SuperSafeChat: false, FlexibleChatEnabled: false,
@@ -218,7 +266,33 @@ const ROUTES = [
       : read(FLAGS) || {};
     json(res, 200, { applicationSettings });
   }],
+  // Roblox's own web client build, downloaded by tools/fetch_webclient.sh.
+  [/^clientsettings(cdn)?\.roblox\.com$/, /^\/v2\/client-version\/WebClientApp/, (req, res) => {
+    const live = liveWebClient();
+    if (!live) return notFound(res, 'web client build (run tools/fetch_webclient.sh)');
+    json(res, 200, JSON.parse(fs.readFileSync(path.join(live, 'client-version.json'), 'utf8')));
+  }],
   [/^clientsettings(cdn)?\.roblox\.com$/, /./, (req, res) => json(res, 200, {})],
+  [/^setup\.rbxcdn\.com$/, /^\/webclient\/(version-[0-9a-f]+)-RobloxWebClient\//, (req, res, u) => {
+    const [, upload] = /^\/webclient\/(version-[0-9a-f]+)-RobloxWebClient\//.exec(u.pathname);
+    const rel = decodeURIComponent(u.pathname.slice(`/webclient/${upload}-RobloxWebClient/`.length));
+    const file = path.join(ROOT, 'webclient', 'live', upload, rel);
+    if (rel.includes('..') || !fs.existsSync(file) || !fs.statSync(file).isFile()) return notFound(res, `web client file ${upload}/${rel}`);
+    const types = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json' };
+    const headers = { 'Content-Type': types[path.extname(file)] || 'application/octet-stream',
+      'Cross-Origin-Resource-Policy': 'cross-origin', 'Access-Control-Allow-Origin': '*' };
+    if (rel === 'WebClient.js') {
+      // The engine's workers run WebClient.js directly; the shim goes first so
+      // their requests reach this backend (see webclient/site-shim.js).
+      const body = Buffer.concat([fs.readFileSync(path.join(ROOT, 'webclient', 'site-shim.js')), Buffer.from('\n'), fs.readFileSync(file)]);
+      res.writeHead(200, { ...headers, 'Content-Length': body.length });
+      return res.end(body);
+    }
+    res.writeHead(200, { ...headers, 'Content-Length': fs.statSync(file).size });
+    fs.createReadStream(file).pipe(res);
+  }],
+  // Crash and error reports stay local.
+  [/(^|\.)rbxinfra\.com$/, /./, (req, res) => json(res, 200, {})],
 
   [/^locale\.roblox\.com$/, /supported-locales|user-locus|locales/, (req, res) => {
     const l = { id: 1, locale: 'en_us', name: 'English', nativeName: 'English', language: { id: 41, name: 'English', nativeName: 'English', languageCode: 'en' } };

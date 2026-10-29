@@ -13,7 +13,9 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
   const browser = await chromium.launch({
     args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist',
       '--enable-features=WebAssemblyJSPromiseIntegration,SharedArrayBuffer',
-      `--js-flags=--experimental-wasm-jspi ${process.env.JSFLAGS || ''}`, '--autoplay-policy=no-user-gesture-required'],
+      `--js-flags=--experimental-wasm-jspi ${process.env.JSFLAGS || ''}`, '--autoplay-policy=no-user-gesture-required',
+      // NETLOG=<file>: Chromium network log (QUIC/WebTransport details).
+      ...(process.env.NETLOG ? [`--log-net-log=${process.env.NETLOG}`, '--net-log-capture-mode=Everything'] : [])],
   });
   // VIDEO=1 records the session (webm, next to the screenshot)
   const context = await browser.newContext({
@@ -89,6 +91,8 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
     if (/\[MAIN\] heartbeat/.test(t)) return;
     w(`${m.type()}: ${t}`);
     if (++lines < 400 || /error|abort|crash|exception/i.test(t)) console.log(`${m.type()}: ${t.slice(0, 400)}`);
+    // Object arguments print as "Object"; expand them for the transport's messages.
+    if (/\[WASM-RNA\]/.test(t)) Promise.all(m.args().map((a) => a.jsonValue().catch(() => '?'))).then((v) => console.log('  args', JSON.stringify(v)));
   });
   page.on('pageerror', (e) => { w(`PAGEERROR: ${e.stack || e}`); console.log('PAGEERROR', String(e.stack || e).slice(0, 1500)); });
   page.on('crash', () => { w('PAGE CRASHED'); console.log('PAGE CRASHED'); });

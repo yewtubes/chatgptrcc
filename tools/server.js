@@ -7,7 +7,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const ROOT = path.resolve(__dirname, '..', 'webclient');
 const PORT = +process.env.PORT || 8080;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json',
-  '.png': 'image/png', '.ttf': 'font/ttf', '.otf': 'font/otf' };
+  '.png': 'image/png', '.ttf': 'font/ttf', '.otf': 'font/otf', '.css': 'text/css', '.svg': 'image/svg+xml' };
 
 function send(res, code, body, type = 'text/plain') {
   res.writeHead(code, { 'Content-Type': type });
@@ -62,6 +62,13 @@ const server = http.createServer((req, res) => {
   if (p.includes('..')) return send(res, 400, 'bad path');
   if (req.method === 'OPTIONS') { res.setHeader('Access-Control-Allow-Headers', '*'); res.setHeader('Access-Control-Allow-Methods', '*'); return send(res, 204, ''); }
   if (req.url.startsWith('/proxy/')) return proxy(req, res, req.url.slice('/proxy/'.length));
+  // Roblox's own play page (tools/fetch_webclient.sh), with site-shim.js loaded first.
+  if (p === '/games/start') {
+    const html = fs.readFileSync(path.join(ROOT, 'site', 'games', 'start.html'), 'utf8');
+    log(req, 200);
+    return send(res, 200, html.replace('<head>', '<head><script src="/site-shim.js"></script>'), 'text/html');
+  }
+  if (/^\/[0-9a-f]{40}\//.test(p)) return serveFile(req, res, path.join(ROOT, 'site', p));
   if (p === '/') return serveFile(req, res, path.join(ROOT, 'WebClient.html'));
   if (p === '/engine/WebClient.metadata.json') { log(req, 200); return send(res, 200, metadata(), 'application/json'); }
   if (p === '/engine/WebClient.wasm' && fs.existsSync(path.join(ROOT, 'WebClient.patched.wasm')))
