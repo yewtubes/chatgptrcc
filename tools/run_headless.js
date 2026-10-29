@@ -15,7 +15,12 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
       '--enable-features=WebAssemblyJSPromiseIntegration,SharedArrayBuffer',
       '--js-flags=--experimental-wasm-jspi', '--autoplay-policy=no-user-gesture-required'],
   });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  // VIDEO=1 records the session (webm, next to the screenshot)
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    ...(process.env.VIDEO ? { recordVideo: { dir: path.dirname(shot), size: { width: 1280, height: 720 } } } : {}),
+  });
+  const page = await context.newPage();
   fs.writeFileSync(logFile, '');
   const t0 = Date.now();
   const w = (s) => fs.appendFileSync(logFile, `[${((Date.now() - t0) / 1000).toFixed(1)}] ${s}\n`);
@@ -71,6 +76,9 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
     await page.screenshot({ path: shot.replace(/\.png$/, '-after-input.png') });
   }
   console.log('screenshot:', shot, 'log:', logFile);
+  const video = page.video();
+  await context.close();
+  if (video) console.log('video:', await video.path());
   await browser.close();
   server.close();
 })();

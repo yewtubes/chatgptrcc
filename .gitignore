@@ -2,5 +2,6 @@ webclient/files/
 webclient/overlay/
 .pkgcache/
 screenshots/latest*
+screenshots/*.webm
 webclient/WebClient.patched.wasm
 tools/luauc/luauc
