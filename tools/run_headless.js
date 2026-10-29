@@ -115,6 +115,8 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
   for (let s = 0; s < secs; s += step) {
     await page.waitForTimeout(step * 1000);
     await page.screenshot({ path: shot }).catch((e) => console.log('screenshot failed', e.message));
+    // SHOTS=1 also keeps each step's screenshot (<out>-<sec>s.png), e.g. to see the loading screen.
+    if (process.env.SHOTS && fs.existsSync(shot)) fs.copyFileSync(shot, shot.replace(/\.png$/, `-${s + step}s.png`));
   }
   // Optional input script after loading, e.g. KEYS="w:3000,space:300,d:1500"
   if (process.env.KEYS) {
