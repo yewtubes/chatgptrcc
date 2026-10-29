@@ -53,6 +53,29 @@ None of these changes modifies the successful compiler's opcode transform,
 compile options, network serialization, schema, Studio injection profile,
 WebTransport setup, database, or original WebClient.
 
+## Pipeline audit and unresolved boundaries
+
+| Stage | Inspection | Result |
+|---|---|---|
+| Studio input | `lrm_compile` copies `source->data()` with `source->size`, not `strlen`. | Embedded NULs are not silently truncated at this copy. Actual runtime ABI ownership remains untested here. |
+| Compile options | Optimization 1, debug 1, Vector3 constructor/type and mutable globals; callback `target`/`options` are logged but not interpreted. | Both original and fixed encoders keep these settings. Target/options semantics are not established by the host tests and were not guessed. |
+| Opcode encoding | Multiply only the low opcode byte by 227; advance using the unencoded opcode's instruction length. | Inverse 203 recovers the complete reference serialization, including unchanged AUX words, for the fixtures. |
+| Compression and wrapping | RSB1 magic, little-endian original length, zstd, XXH32 seed 42 and keyed XOR. | Successful packaging agrees with the original local_rcc producer. This layer does not supply Roblox script authentication. |
+| Return to Studio | A 32-byte MSVC x64 string layout, 16-byte small-string storage, explicit size/capacity and trailing NUL; large strings use Studio's exported allocator. | No `strlen`-based truncation is visible in this implementation. Runtime allocation/free compatibility was not retested. |
+| Network serialization | Existing Studio implementation selected by schema type 0x2F. | No serializer code is changed. The wrapper's correct lengths do not prove what the proprietary serializer transmits. |
+| Client load | Fingerprinted loader context supplies data and size to the exact client. | Additional validation exists before prototype parsing. Full paired sender/receiver captures are still required. |
+
+The compile-error branch currently returns raw `\0 + message` without RSB1,
+whereas the reference local_rcc producer wraps compiler results uniformly.
+That discrepancy is recorded, not changed without an actual-client test of
+the error path. It does not explain successful compilations of all seven
+failing LocalScripts. Compression failure also returns an empty result;
+no such failure was observed in the supplied logs or these tests.
+
+The eight-byte prefix used by the inherited `tools/luauc` Play Solo
+experiment belongs to another storage path. It is not evidence that the
+network RSB1 producer should prepend that prefix.
+
 ## Exact WebClient evidence
 
 Downloaded anonymously from the build-specific public URL:
