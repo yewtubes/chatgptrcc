@@ -209,8 +209,50 @@ task.spawn(function()
 	-- from the in-experience patch this bootstrap ships in.
 	try("StarterScript", function()
 		local robloxGui = game:GetService("CoreGui"):WaitForChild("RobloxGui", 10)
+		-- AvatarChatService:GetClientFeaturesAsync() waits for the game server,
+		-- which a Play Solo session does not have; it would hang the unibar
+		-- (topbar) while loading its self view integration.
+		try("SharedFlags", function()
+			local SharedFlags = require(game:GetService("CorePackages").Workspace.Packages.SharedFlags)
+			SharedFlags.GetFFlagAvatarChatServiceEnabled = function()
+				return false
+			end
+		end)
 		game:GetService("ScriptContext"):AddCoreScriptLocal("StarterScript", robloxGui)
 		log("StarterScript started")
+	end)
+
+	task.delay(12, function()
+		for _, g in game:GetService("CoreGui"):GetChildren() do
+			local info = g.ClassName
+			if g:IsA("LayerCollector") then
+				info ..= " enabled=" .. tostring(g.Enabled) .. " kids=" .. #g:GetChildren()
+			end
+			log("CoreGui child:", g.Name, info)
+		end
+		local rg = game:GetService("CoreGui"):FindFirstChild("RobloxGui")
+		if rg then
+			for _, g in rg:GetChildren() do
+				if g:IsA("GuiObject") then log("RobloxGui child:", g.Name, g.ClassName, "visible=" .. tostring(g.Visible)) end
+			end
+		end
+		local function dump(inst, depth)
+			if depth > 4 then return end
+			for _, c in inst:GetChildren() do
+				local extra = ""
+				if c:IsA("GuiObject") then
+					extra = string.format(" visible=%s pos=%s size=%s abs=%s", tostring(c.Visible), tostring(c.Position), tostring(c.Size), tostring(c.AbsoluteSize))
+				end
+				log(string.rep("  ", depth) .. c.Name, c.ClassName .. extra)
+				dump(c, depth + 1)
+			end
+		end
+		local ch = game:GetService("CoreGui"):FindFirstChild("Children")
+		if ch then dump(ch, 0) end
+		log("TopbarInset", tostring(game:GetService("GuiService").TopbarInset))
+		try("TopbarEnabled", function()
+			log("TopbarEnabled =", tostring(game:GetService("StarterGui"):GetCore("TopbarEnabled")))
+		end)
 	end)
 end)
 

@@ -28,9 +28,9 @@ const idx = R.index(m);
 let target = null;
 for (const o of idx.inst.values()) if (R.fullName(idx, o.ref) === HOST) target = o;
 if (!target) throw new Error(HOST + ' not found');
-const cls = idx.classes.get(target.classId);
-const pos = cls.refs.indexOf(target.ref);
-function setProp(name, value) {
+function setProp(name, value, inst) {
+  const cls = idx.classes.get(inst.classId);
+  const pos = cls.refs.indexOf(inst.ref);
   for (const c of m.chunks) {
     if (c.name !== 'PROP' || c.data.readUInt32LE(0) !== cls.id) continue;
     const [prop, p0] = R.rdStr(c.data, 4);
@@ -51,8 +51,24 @@ function setProp(name, value) {
   }
   throw new Error('property ' + name + ' not found');
 }
-setProp('Name', Buffer.from('LuaAppStarterScript'));
-setProp('Source', bytecode);
+setProp('Name', Buffer.from('LuaAppStarterScript'), target);
+setProp('Source', bytecode, target);
+
+// Optional module replacements from Lua source: playsolo/replace/<Full.Path>.lua
+const repDir = path.join(ROOT, 'playsolo', 'replace');
+if (fs.existsSync(repDir)) {
+  for (const f of fs.readdirSync(repDir).filter((f) => f.endsWith('.lua'))) {
+    const full = f.slice(0, -4);
+    let inst = null;
+    for (const o of idx.inst.values()) if (R.fullName(idx, o.ref) === full) inst = o;
+    if (!inst) { console.log(`replace: ${full} not found`); continue; }
+    const out = path.join(OV, 'tmp.bin');
+    execFileSync(path.join(ROOT, 'tools/luauc/luauc'), [path.join(repDir, f), out]);
+    setProp('Source', fs.readFileSync(out), inst);
+    fs.unlinkSync(out);
+    console.log(`replace: ${full}`);
+  }
+}
 console.log(`${HOST} -> LuaAppStarterScript (${bytecode.length} bytes of bytecode)`);
 const outModel = path.join(OV, 'ExtraContent/models/UniversalApp/UniversalApp.rbxm');
 fs.mkdirSync(path.dirname(outModel), { recursive: true });
