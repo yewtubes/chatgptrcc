@@ -1,0 +1,61 @@
+name: Original WebClient live bytecode test
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-bytecode.yml'
+      - 'tools/bytecode/live/**'
+      - 'local_rcc_modern/src/audit_capture.*'
+      - 'local_rcc_modern/src/dllmain.cpp'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      STUDIO_DIR: ${{ github.workspace }}/.live-runtime/studio
+      DATA_DIR: ${{ github.workspace }}/.live-runtime/data
+      DISPLAY: ':97'
+      DISPLAY_NUM: ':97'
+      EVIDENCE_DIR: ${{ github.workspace }}/ci-evidence
+      LOCAL_RCC: '1'
+      LP_NUM_THREADS: '1'
+      PORT: '18080'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install runner prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends wine64 xvfb xauth libgl1-mesa-dri libglx-mesa0 libasound2-plugins g++-mingw-w64-x86-64-posix ninja-build
+          python3 -m pip install --break-system-packages aioquic
+          npm install --no-save playwright
+      - name: Prepare pinned Wine, Studio, browser and original WebClient
+        run: |
+          mkdir -p "$EVIDENCE_DIR"
+          python3 tools/bytecode/live/prepare_runtime.py wine .live-runtime
+          python3 tools/bytecode/live/prepare_runtime.py chrome .live-runtime
+          python3 tools/bytecode/live/prepare_runtime.py studio "$STUDIO_DIR"
+          python3 tools/bytecode/live/prepare_runtime.py webclient .live-runtime
+          echo "PATH=$PWD/.live-runtime/wine/opt/wine-staging/bin:$PATH" >> "$GITHUB_ENV"
+          echo "CHROMIUM_EXECUTABLE_PATH=$PWD/.live-runtime/chrome/chrome-headless-shell-linux64/chrome-headless-shell" >> "$GITHUB_ENV"
+      - name: Build compiler and capture diagnostics
+        run: |
+          cmake -S local_rcc_modern -B local_rcc_modern/build-host -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build local_rcc_modern/build-host --parallel 2
+          ctest --test-dir local_rcc_modern/build-host --output-on-failure
+          cmake -S local_rcc_modern -B local_rcc_modern/build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build local_rcc_modern/build-win --parallel 2
+      - name: Start isolated Studio and test the original WebClient
+        run: python3 tools/bytecode/live/run_live.py
+      - name: Upload actual logs and captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-webclient-bytecode-${{ github.run_id }}
+          path: ci-evidence/
+          if-no-files-found: warn

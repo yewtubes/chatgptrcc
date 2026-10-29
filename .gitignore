@@ -14,3 +14,6 @@ webclient/live/
 data/
 local_rcc_modern/build-*/
 __pycache__/
+.live-runtime/
+ci-evidence/
+node_modules/

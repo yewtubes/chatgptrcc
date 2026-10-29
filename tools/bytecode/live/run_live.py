@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Run the real Studio/WebClient test in a disposable, independent runner."""
+import getpass
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import socket
+import subprocess
+import time
+import xml.etree.ElementTree as ET
+
+ROOT=Path(__file__).resolve().parents[3]
+RUNTIME=ROOT/'.live-runtime'
+OUT=Path(os.environ['EVIDENCE_DIR']).resolve()
+STUDIO=Path(os.environ['STUDIO_DIR']).resolve()
+if not STUDIO.is_relative_to(RUNTIME) or not Path(os.environ['DATA_DIR']).resolve().is_relative_to(RUNTIME):
+    raise SystemExit('refusing to use a Studio prefix/database outside this checkout runtime')
+OUT.mkdir(parents=True,exist_ok=True)
+env=dict(os.environ,WINEPREFIX=str(STUDIO/'prefix'),WINEARCH='win64',WINEDEBUG='-all',WINEDLLOVERRIDES='mscoree,mshtml=',
+         STUDIO_BACKEND_LOG=str(OUT/'studio-backend.log'),LOCAL_RCC_LOG='Z:'+str(OUT/'compiler.log'),LOCAL_RCC_AUDIT_DIR='Z:'+str(OUT/'sender'),
+         RCC_HOST='127.0.0.1',RCC_PORT='53680',PLACE_ID='1818',STUDIO_PLACE_ID='1818',LP_NUM_THREADS='1')
+cpus=sorted(os.sched_getaffinity(0));split=max(1,len(cpus)//2)
+env['STUDIO_CPUS']=','.join(map(str,cpus[:split]));browser_cpus=cpus[split:] or cpus[:1]
+username=getpass.getuser()
+logs=STUDIO/'prefix/drive_c/users'/username/'AppData/Local/Roblox/logs'
+env['STUDIO_LOGS']=str(logs)
+processes=[];files=[]
+
+def run(args,timeout=90,**kwargs):
+    return subprocess.run(args,cwd=ROOT,env=env,check=True,timeout=timeout,**kwargs)
+
+def start(args,log):
+    file=open(OUT/log,'wb');files.append(file)
+    p=subprocess.Popen(args,cwd=ROOT,env=env,stdout=file,stderr=subprocess.STDOUT,start_new_session=True)
+    processes.append(p);return p
+
+def readlog(name):
+    p=OUT/name;return p.read_text(errors='replace') if p.exists() else ''
+
+def fixtures():
+    tree=ET.parse(ROOT/'places/Baseplate.rbxlx');root=tree.getroot()
+    player=ET.SubElement(root,'Item',{'class':'StarterPlayer','referent':'AUDIT_SP'})
+    scripts=ET.SubElement(player,'Item',{'class':'StarterPlayerScripts','referent':'AUDIT_SPS'})
+    sources={
+        'BytecodeAuditSmall':'print("ROBLUC_BYTECODE_AUDIT_SMALL")',
+        'BytecodeAuditLarge':'local value = "\\0\\255'+('original-client-integrity-test-'*100)+'"\nprint("ROBLUC_BYTECODE_AUDIT_LARGE", value)',
+    }
+    for name,source in sources.items():
+        item=ET.SubElement(scripts,'Item',{'class':'LocalScript','referent':name});props=ET.SubElement(item,'Properties')
+        ET.SubElement(props,'string',{'name':'Name'}).text=name
+        ET.SubElement(props,'ProtectedString',{'name':'Source'}).text=source
+        (OUT/(name+'.lua')).write_text(source)
+    target=RUNTIME/'audit-place.rbxlx';tree.write(target,encoding='utf-8',xml_declaration=True)
+    return target
+
+result={'live_join_run':False,'controls_fixed':False,'webclient_modified':False,'runtime':'Wine Staging 11.20 / Studio 0.745.0.7451137'}
+try:
+    for port in (443,18080,53680):
+        with socket.socket() as s:s.bind(('127.0.0.1',port))
+    # Name routing is confined to this fresh GitHub runner VM, never a shared project machine.
+    setup=(ROOT/'tools/studio/setup_env.sh').read_text()
+    services=re.search(r'services="([^"]+)"',setup,re.S)[1].split()
+    names=['sitetest1.robloxlabs.com']+[s+'.sitetest1.robloxlabs.com' for s in services]+['ephemeralcounters.api.sitetest1.robloxlabs.com','upload.crashes.rbxinfra.com']
+    run(['sudo','tee','-a','/etc/hosts'],input=('\n# independent Robluc CI\n127.0.0.1 '+' '.join(names)+'\n').encode(),stdout=subprocess.DEVNULL)
+    run(['sudo','sysctl','-w','net.ipv4.ip_unprivileged_port_start=0'],stdout=subprocess.DEVNULL)
+    display=start(['Xvfb',env.get('DISPLAY',':97'),'-screen','0','1280x800x24','-nolisten','tcp','-ac'],'xvfb.log')
+    time.sleep(2)
+    if display.poll() is not None:raise RuntimeError('isolated Xvfb failed')
+    with open(OUT/'wineboot.log','wb') as f:run(['wineboot','-i'],timeout=120,stdout=f,stderr=subprocess.STDOUT)
+    run(['tools/studio/make_tls.sh'],stdout=subprocess.DEVNULL)
+    with open(STUDIO/'app/ssl/cacert.pem','ab') as f:f.write(b'\nLocal Roblox Backend CA\n'+(ROOT/'backend-tls/ca.crt').read_bytes())
+    run(['node','-e',"require('./tools/backend/db.js').open()"],stdout=subprocess.DEVNULL)
+    api=start(['node','tools/studio_backend.js'],'backend-process.log')
+    time.sleep(2)
+    server=start(['tools/studio/run_server.sh',str(fixtures()),'53680'],'studio-launch.log')
+    started=time.monotonic()
+    while time.monotonic()-started<200:
+        if server.poll() is not None:raise RuntimeError('Studio server exited; see studio-launch.log')
+        if 'run_server: registered job ' in readlog('studio-launch.log'):break
+        time.sleep(2)
+    else:raise RuntimeError('Studio did not register RbxTransport within 200 seconds')
+    for capture in (False,True):
+        label='capture' if capture else 'baseline'
+        command=['taskset','-c',','.join(map(str,browser_cpus)),'node','tools/bytecode/live/browser_run.js']+(['--capture'] if capture else [])
+        browser=start(command,label+'-process.log')
+        try:code=browser.wait(timeout=240)
+        except subprocess.TimeoutExpired:
+            os.killpg(browser.pid,signal.SIGTERM);raise RuntimeError(label+' browser timed out')
+        if code:raise RuntimeError(label+' browser failed; see logs')
+        text=readlog(label+'-browser.log')
+        result[label]={'replicator_created':bool(re.search(r'Replicator created',text,re.I)),
+                       'player_module_corrupted':bool(re.search(r'PlayerModule[^\n]*bytecode corrupted',text)),
+                       'small_probe_executed':'ROBLUC_BYTECODE_AUDIT_SMALL' in text,
+                       'large_probe_executed':'ROBLUC_BYTECODE_AUDIT_LARGE' in text,
+                       'bytecode_errors':sorted(set(re.findall(r'[^\n]*bytecode corrupted[^\n]*',text)))}
+    result['live_join_run']=True
+    receiver=OUT/'receiver.jsonl';sender={}
+    for file in (OUT/'sender').glob('*.bc'):
+        content=file.read_bytes();digest=hashlib.sha256(content).hexdigest();sender.setdefault(digest,[]).append(file.name)
+    rows=[json.loads(line) for line in receiver.read_text().splitlines()] if receiver.exists() else []
+    for row in rows:row['matching_sender_files']=sender.get(row['sha256'],[])
+    result['received_bytecode']=rows
+    result['full_payload_matches']=sum(bool(row['matching_sender_files']) for row in rows)
+    result['controls_fixed']=result['baseline']['small_probe_executed'] and not result['baseline']['player_module_corrupted']
+    if not result['baseline']['replicator_created']:raise RuntimeError('baseline did not reach Replicator creation')
+    if not rows:raise RuntimeError('no actual VM loader captures recorded')
+finally:
+    for p in reversed(processes):
+        if p.poll() is None:
+            try:os.killpg(p.pid,signal.SIGTERM)
+            except ProcessLookupError:pass
+    subprocess.run(['wineserver','-k'],env=env,cwd=ROOT,timeout=20,check=False)
+    for file in logs.glob('*.log') if logs.exists() else []:
+        (OUT/('studio-'+file.name)).write_bytes(file.read_bytes())
+    file=ROOT/'webclient/live/version-75f1039cb4964863/WebClient.wasm'
+    if file.exists():result['webclient_sha256_after']=hashlib.sha256(file.read_bytes()).hexdigest()
+    (OUT/'live-result.json').write_text(json.dumps(result,indent=2)+'\n')
+    print(json.dumps(result,indent=2),flush=True)
+    for file in files:file.close()

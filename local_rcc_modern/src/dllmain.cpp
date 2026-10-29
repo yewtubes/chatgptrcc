@@ -17,6 +17,7 @@
 #include <string>
 
 #include "encoder.h"
+#include "audit_capture.h"
 #include "profiles.h"
 
 namespace {
@@ -52,6 +53,7 @@ static_assert(sizeof(MsvcString) == 32, "MSVC std::string is 32 bytes");
 
 using AllocFn = void* (*)(size_t);
 AllocFn g_rbx_allocate = nullptr;
+LONG g_capture_id = 0;
 
 // Builds an MSVC std::string in place, allocating with Studio's allocator so
 // Studio can free it.
@@ -82,6 +84,14 @@ extern "C" MsvcString* lrm_compile(MsvcString* out, const MsvcString* source, in
         return make_string(out, bytecode);
     }
     std::string encoded = lrm::rsb1_encode(bytecode);
+    char audit_dir[32768];
+    DWORD audit_size = GetEnvironmentVariableA("LOCAL_RCC_AUDIT_DIR", audit_dir, sizeof audit_dir);
+    if (audit_size > 0 && audit_size < sizeof audit_dir) {
+        const auto id = std::to_string(GetCurrentProcessId()) + "-" + std::to_string(InterlockedIncrement(&g_capture_id));
+        std::string error;
+        if (!lrm::save_compile_capture(audit_dir, id, bytecode, encoded, src.size(), target, options, error))
+            log("capture failed: %s", error.c_str());
+    }
     log("compiled target %d options %d: source %zu -> bytecode %zu -> rsb1 %zu", target, options, src.size(),
         bytecode.size(), encoded.size());
     return make_string(out, encoded);
