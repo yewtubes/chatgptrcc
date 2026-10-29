@@ -1424,6 +1424,9 @@ async function createWasm() {
 
   var rbxFibers = {
   parked:new Map,
+  created:0,
+  destroyed:0,
+  transfers:0,
   };
   
   var rbxFiberSave = () => ({ sp: _get_stack_ptr(), base: _get_stack_base(), end: _get_stack_end() });
@@ -1434,6 +1437,8 @@ async function createWasm() {
       var handle = new Promise((resolve) => { rbxFibers.pendingCreate = { creator, resolve }; });
       _set_stack_limits(stackTop, stackLow);
       _set_stack_ptr(stackTop);
+      rbxFibers.created++;
+      if (!rbxFibers.statsTimer) rbxFibers.statsTimer = setInterval(() => console.log(`[rbx] fibers created=${rbxFibers.created} destroyed=${rbxFibers.destroyed} parked=${rbxFibers.parked.size} transfers=${rbxFibers.transfers}`), 5000);
       var done = _fiber_entry(creator, fn, arg);
       Promise.resolve(done).catch((e) => console.error('[rbx] fiber died', e));
       var h = await handle;
@@ -1460,6 +1465,7 @@ async function createWasm() {
     };
   
   var ___asyncjs__fiber_transfer_js = (from, to) => {
+      rbxFibers.transfers++;
       var p = rbxFiberPark(from);
       var pending = rbxFibers.pendingCreate;
       if (pending && pending.creator === to) {
@@ -1473,40 +1479,45 @@ async function createWasm() {
     };
   ___asyncjs__fiber_transfer_js.isAsync = true;
 
-  var ___asyncjs__rbxFutexWaitMainJspi = async (addr, val, timeoutMs) => {
+  var ___asyncjs__rbxFutexWaitMainJspi = (addr, val, timeoutMs) => {
       var i = addr >> 2;
       if (Atomics.load(HEAP32, i) !== val) return 1;
+      if (!(timeoutMs > 0)) return 2;
+      var map = (v) => (v === 'ok' ? 0 : v === 'not-equal' ? 1 : 2);
       var r = Atomics.waitAsync(HEAP32, i, val, timeoutMs === Infinity ? undefined : timeoutMs);
-      var v = r.async ? await r.value : r.value;
-      return v === 'ok' ? 0 : v === 'not-equal' ? 1 : 2;
+      if (!r.async) return map(r.value);
+      // debug: report long waits on the main thread
+      var t0 = performance.now();
+      var watch = setTimeout(() => console.warn(`[rbx] main-thread futex wait on ${addr} (val ${val}, timeout ${timeoutMs}) pending >3s; now ${Atomics.load(HEAP32, i)}`), 3000);
+      return r.value.then((v) => { clearTimeout(watch); var dt = performance.now() - t0; if (dt > 3000) console.warn(`[rbx] futex ${addr} woke after ${dt | 0}ms: ${v}`); return map(v); });
     };
   ___asyncjs__rbxFutexWaitMainJspi.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_clear = async () => 0;
+  var ___asyncjs__rbx_opfs_clear = () => 0;
   ___asyncjs__rbx_opfs_clear.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_contains = async (k) => 0;
+  var ___asyncjs__rbx_opfs_contains = (k) => 0;
   ___asyncjs__rbx_opfs_contains.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_file_size = async (k) => 0;
+  var ___asyncjs__rbx_opfs_file_size = (k) => 0;
   ___asyncjs__rbx_opfs_file_size.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_get = async (a, b) => 0;
+  var ___asyncjs__rbx_opfs_get = (a, b) => 0;
   ___asyncjs__rbx_opfs_get.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_get_buffer = async (a, b, c) => 0;
+  var ___asyncjs__rbx_opfs_get_buffer = (a, b, c) => 0;
   ___asyncjs__rbx_opfs_get_buffer.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_get_buffer_offset = async (a, b, c, d, e) => 0;
+  var ___asyncjs__rbx_opfs_get_buffer_offset = (a, b, c, d, e) => 0;
   ___asyncjs__rbx_opfs_get_buffer_offset.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_get_offset = async (a, b, c, d) => 0;
+  var ___asyncjs__rbx_opfs_get_offset = (a, b, c, d) => 0;
   ___asyncjs__rbx_opfs_get_offset.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_list = async (a, b) => 0;
+  var ___asyncjs__rbx_opfs_list = (a, b) => 0;
   ___asyncjs__rbx_opfs_list.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_list_sized = async (a, b) => 0;
+  var ___asyncjs__rbx_opfs_list_sized = (a, b) => 0;
   ___asyncjs__rbx_opfs_list_sized.isAsync = true;
 
   var rbxLog = (...a) => console.log('[rbx]', ...a);
@@ -1516,16 +1527,16 @@ async function createWasm() {
     };
   
   
-  var ___asyncjs__rbx_opfs_open = async (name, tid) => rbxOnce('opfs_open', UTF8ToString(name), tid);
+  var ___asyncjs__rbx_opfs_open = (name, tid) => { rbxOnce('opfs_open', UTF8ToString(name), tid); };
   ___asyncjs__rbx_opfs_open.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_remove = async (k) => 0;
+  var ___asyncjs__rbx_opfs_remove = (k) => 0;
   ___asyncjs__rbx_opfs_remove.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_remove_batch = async (a) => 0;
+  var ___asyncjs__rbx_opfs_remove_batch = (a) => 0;
   ___asyncjs__rbx_opfs_remove_batch.isAsync = true;
 
-  var ___asyncjs__rbx_opfs_set = async (k, p, n) => 0;
+  var ___asyncjs__rbx_opfs_set = (k, p, n) => 0;
   ___asyncjs__rbx_opfs_set.isAsync = true;
 
   var ___call_sighandler = (fp, sig) => getWasmTableEntry(fp)(sig);
@@ -5856,7 +5867,7 @@ async function createWasm() {
   
 
 
-  var _fiber_destroy_js = (token) => { rbxFibers.parked.delete(token); };
+  var _fiber_destroy_js = (token) => { rbxFibers.destroyed++; rbxFibers.parked.delete(token); };
 
   var _focus_text_input = () => { try { Module.inputElement?.focus({ preventScroll: true }); } catch (e) {} };
 

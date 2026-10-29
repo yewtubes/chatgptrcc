@@ -40,45 +40,53 @@ addToLibrary({
   rbx_opfs_install_helpers: (a, b) => rbxOnce('opfs_install_helpers', a, b),
   __asyncjs__rbx_opfs_open__async: true,
   __asyncjs__rbx_opfs_open__deps: ['$rbxOnce', '$UTF8ToString'],
-  __asyncjs__rbx_opfs_open: async (name, tid) => rbxOnce('opfs_open', UTF8ToString(name), tid),
+  __asyncjs__rbx_opfs_open: (name, tid) => { rbxOnce('opfs_open', UTF8ToString(name), tid); },
   __asyncjs__rbx_opfs_file_size__async: true,
-  __asyncjs__rbx_opfs_file_size: async (k) => 0,
+  __asyncjs__rbx_opfs_file_size: (k) => 0,
   __asyncjs__rbx_opfs_contains__async: true,
-  __asyncjs__rbx_opfs_contains: async (k) => 0,
+  __asyncjs__rbx_opfs_contains: (k) => 0,
   rbx_opfs_read_sync_if_cached: (a, b, c, d) => 0,
   __asyncjs__rbx_opfs_get_buffer_offset__async: true,
-  __asyncjs__rbx_opfs_get_buffer_offset: async (a, b, c, d, e) => 0,
+  __asyncjs__rbx_opfs_get_buffer_offset: (a, b, c, d, e) => 0,
   __asyncjs__rbx_opfs_set__async: true,
-  __asyncjs__rbx_opfs_set: async (k, p, n) => 0,
+  __asyncjs__rbx_opfs_set: (k, p, n) => 0,
   __asyncjs__rbx_opfs_remove__async: true,
-  __asyncjs__rbx_opfs_remove: async (k) => 0,
+  __asyncjs__rbx_opfs_remove: (k) => 0,
   __asyncjs__rbx_opfs_list_sized__async: true,
-  __asyncjs__rbx_opfs_list_sized: async (a, b) => 0,
+  __asyncjs__rbx_opfs_list_sized: (a, b) => 0,
   __asyncjs__rbx_opfs_remove_batch__async: true,
-  __asyncjs__rbx_opfs_remove_batch: async (a) => 0,
+  __asyncjs__rbx_opfs_remove_batch: (a) => 0,
   rbx_opfs_free: (p) => {},
   __asyncjs__rbx_opfs_list__async: true,
-  __asyncjs__rbx_opfs_list: async (a, b) => 0,
+  __asyncjs__rbx_opfs_list: (a, b) => 0,
   rbx_opfs_close: (a) => {},
   __asyncjs__rbx_opfs_get_offset__async: true,
-  __asyncjs__rbx_opfs_get_offset: async (a, b, c, d) => 0,
+  __asyncjs__rbx_opfs_get_offset: (a, b, c, d) => 0,
   __asyncjs__rbx_opfs_get__async: true,
-  __asyncjs__rbx_opfs_get: async (a, b) => 0,
+  __asyncjs__rbx_opfs_get: (a, b) => 0,
   __asyncjs__rbx_opfs_clear__async: true,
-  __asyncjs__rbx_opfs_clear: async () => 0,
+  __asyncjs__rbx_opfs_clear: () => 0,
   __asyncjs__rbx_opfs_get_buffer__async: true,
-  __asyncjs__rbx_opfs_get_buffer: async (a, b, c) => 0,
+  __asyncjs__rbx_opfs_get_buffer: (a, b, c) => 0,
 
   // ---- threading / scheduling ---------------------------------------------
   // Futex wait for the main thread, which may not block: suspends via JSPI.
   // Returns 0 ok, 1 not-equal, 2 timed-out (indexes into the wasm's table).
   __asyncjs__rbxFutexWaitMainJspi__async: true,
-  __asyncjs__rbxFutexWaitMainJspi: async (addr, val, timeoutMs) => {
+  // Answer synchronously whenever possible: returning a promise makes JSPI
+  // suspend and resume the whole main-thread stack, and spin-waits on a
+  // contended lock otherwise turn into a flood of suspensions.
+  __asyncjs__rbxFutexWaitMainJspi: (addr, val, timeoutMs) => {
     var i = addr >> 2;
     if (Atomics.load(HEAP32, i) !== val) return 1;
+    if (!(timeoutMs > 0)) return 2;
+    var map = (v) => (v === 'ok' ? 0 : v === 'not-equal' ? 1 : 2);
     var r = Atomics.waitAsync(HEAP32, i, val, timeoutMs === Infinity ? undefined : timeoutMs);
-    var v = r.async ? await r.value : r.value;
-    return v === 'ok' ? 0 : v === 'not-equal' ? 1 : 2;
+    if (!r.async) return map(r.value);
+    // debug: report long waits on the main thread
+    var t0 = performance.now();
+    var watch = setTimeout(() => console.warn(`[rbx] main-thread futex wait on ${addr} (val ${val}, timeout ${timeoutMs}) pending >3s; now ${Atomics.load(HEAP32, i)}`), 3000);
+    return r.value.then((v) => { clearTimeout(watch); var dt = performance.now() - t0; if (dt > 3000) console.warn(`[rbx] futex ${addr} woke after ${dt | 0}ms: ${v}`); return map(v); });
   },
 
   js_init_ring_buffers: (header, channels) => {
@@ -90,7 +98,7 @@ addToLibrary({
   // its own C stack). fiber_transfer_js(from, to) parks the caller under `from`
   // and resumes whoever is parked under `to`. The shadow stack pointer and
   // limits are saved/restored per context.
-  $rbxFibers: { parked: new Map() },
+  $rbxFibers: { parked: new Map(), created: 0, destroyed: 0, transfers: 0 },
   $rbxFiberSave: () => ({ sp: _get_stack_ptr(), base: _get_stack_base(), end: _get_stack_end() }),
   $rbxFiberRestore: (st) => { _set_stack_limits(st.base, st.end); _set_stack_ptr(st.sp); },
   $rbxFiberPark__deps: ['$rbxFibers', '$rbxFiberSave', '$rbxFiberRestore'],
@@ -111,6 +119,7 @@ addToLibrary({
   __asyncjs__fiber_transfer_js__async: true,
   __asyncjs__fiber_transfer_js__deps: ['$rbxFiberPark', '$rbxFiberWake', '$rbxFibers'],
   __asyncjs__fiber_transfer_js: (from, to) => {
+    rbxFibers.transfers++;
     var p = rbxFiberPark(from);
     var pending = rbxFibers.pendingCreate;
     if (pending && pending.creator === to) {
@@ -132,6 +141,8 @@ addToLibrary({
     var handle = new Promise((resolve) => { rbxFibers.pendingCreate = { creator, resolve }; });
     _set_stack_limits(stackTop, stackLow);
     _set_stack_ptr(stackTop);
+    rbxFibers.created++;
+    if (!rbxFibers.statsTimer) rbxFibers.statsTimer = setInterval(() => console.log(`[rbx] fibers created=${rbxFibers.created} destroyed=${rbxFibers.destroyed} parked=${rbxFibers.parked.size} transfers=${rbxFibers.transfers}`), 5000);
     var done = _fiber_entry(creator, fn, arg);
     Promise.resolve(done).catch((e) => console.error('[rbx] fiber died', e));
     var h = await handle;
@@ -139,7 +150,7 @@ addToLibrary({
     return h;
   },
   fiber_destroy_js__deps: ['$rbxFibers'],
-  fiber_destroy_js: (token) => { rbxFibers.parked.delete(token); },
+  fiber_destroy_js: (token) => { rbxFibers.destroyed++; rbxFibers.parked.delete(token); },
 
   // main() calls this once; drive main_loop_iteration from rAF.
   schedule_main_loop__deps: ['$callUserCallback'],

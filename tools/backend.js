@@ -11,6 +11,45 @@ const ASSETS = path.join(ROOT, 'webclient', 'assets');
 const FLAGS = path.join(ROOT, 'webclient', 'LocalFlags.json');
 
 const USER = { id: 1, name: 'Player1', displayName: 'Player1' };
+
+// Assets are genuine Roblox content: anything not yet in the local store is
+// fetched once from Roblox's public asset delivery and cached in
+// webclient/assets/ (set ASSET_FETCH=0 to stay fully offline).
+const { execFile } = require('child_process');
+const fetching = new Map();
+const noFetch = new Set();
+function curl(args) {
+  return new Promise((resolve, reject) =>
+    execFile('curl', ['-sS', '-m', '60', '--compressed', ...args], { encoding: 'buffer', maxBuffer: 1 << 30 },
+      (err, out) => (err ? reject(err) : resolve(out))));
+}
+function fetchAsset(id) {
+  id = String(id);
+  if (process.env.ASSET_FETCH === '0' || !/^\d+$/.test(id) || noFetch.has(id)) return Promise.resolve(false);
+  if (assetFile(id)) return Promise.resolve(true);
+  if (!fetching.has(id)) {
+    fetching.set(id, (async () => {
+      try {
+        const meta = JSON.parse((await curl([`https://assetdelivery.roblox.com/v2/assetId/${id}`])).toString());
+        const loc = meta.locations && meta.locations[0] && meta.locations[0].location;
+        if (!loc) throw new Error((meta.errors && meta.errors[0] && meta.errors[0].message) || 'no location');
+        const data = await curl(['-L', loc]);
+        fs.mkdirSync(ASSETS, { recursive: true });
+        fs.writeFileSync(path.join(ASSETS, id), data);
+        fs.writeFileSync(path.join(ASSETS, `${id}.json`), JSON.stringify({ assetTypeId: meta.assetTypeId }));
+        console.log(`backend: cached asset ${id} (type ${meta.assetTypeId}, ${data.length} bytes)`);
+        return true;
+      } catch (e) {
+        noFetch.add(id);
+        console.log(`backend: asset ${id} not downloadable: ${e.message.split('\n')[0]}`);
+        return false;
+      } finally {
+        fetching.delete(id);
+      }
+    })());
+  }
+  return fetching.get(id);
+}
 const unhandled = new Set();
 
 const json = (res, code, body) => {
@@ -45,7 +84,7 @@ function sendFile(res, file) {
 
 // Avatar for the local player: classic R6 colours, no catalog assets.
 const AVATAR = {
-  resolvedAvatarType: 'R6',
+  resolvedAvatarType: process.env.AVATAR_TYPE || 'R15',
   accessoryVersionIds: [], equippedGearVersionIds: [], backpackGearVersionIds: [],
   assetAndAssetTypeIds: [], animationAssetIds: {},
   bodyColors: { headColorId: 24, torsoColorId: 23, rightArmColorId: 24, leftArmColorId: 24, rightLegColorId: 119, leftLegColorId: 119 },
@@ -107,6 +146,7 @@ const ROUTES = [
   [/^assetdelivery\.roblox\.com$/, /^\/v1\/assets\/batch/, async (req, res, u, body) => {
     let items = [];
     try { items = JSON.parse(body.toString() || '[]'); } catch {}
+    await Promise.all(items.map((it) => (it.assetId ?? it.AssetId) && fetchAsset(it.assetId ?? it.AssetId)));
     json(res, 200, items.map((it) => {
       const id = it.assetId ?? it.AssetId;
       const hash = it.hash ?? it.Hash;
@@ -119,8 +159,9 @@ const ROUTES = [
       return { ...base, errors: [{ code: 404, message: 'Asset not in local store' }] };
     }));
   }],
-  [/^assetdelivery\.roblox\.com$/, /^\/v\d\/asset(Id\/\d+)?/, (req, res, u) => {
+  [/^assetdelivery\.roblox\.com$/, /^\/v\d\/asset(Id\/\d+)?/, async (req, res, u) => {
     const id = u.searchParams.get('id') || (/assetId\/(\d+)/.exec(u.pathname) || [])[1];
+    if (id) await fetchAsset(id);
     const hash = u.searchParams.get('hash');
     const f = (id && assetFile(id)) || (hash && hashFile(hash));
     if (f) return sendFile(res, f);
@@ -134,6 +175,22 @@ const ROUTES = [
     json(res, 200, joinScript(placeId));
   }],
 
+  // Display names for player lists, chat, etc.
+  [/^apis\.roblox\.com$/, /^\/user-profile-api\/v1\/user\/profiles\/get-profiles/, async (req, res, u, body) => {
+    let ids = [USER.id];
+    try { ids = JSON.parse(body.toString()).userIds || ids; } catch {}
+    json(res, 200, {
+      profileDetails: ids.map((id) => {
+        const name = +id === USER.id ? USER.name : `Player${id}`;
+        return {
+          userId: +id,
+          names: { combinedName: name, displayName: name, username: name, alias: '', contactName: '', platformName: '' },
+          isVerified: false,
+        };
+      }),
+    });
+  }],
+
   // App policy: allow the defaults.
   [/^apis\.roblox\.com$/, /guac|universal-app-configuration|app-policy/, (req, res) => json(res, 200, {})],
   [/^apis\.roblox\.com$/, /maintenance-status/, (req, res) => json(res, 200, { isAlertVisible: false })],
@@ -143,10 +200,16 @@ const ROUTES = [
   [/./, /experience-signals-ingest|\/pbe$|otel|analytics|telemetry|heartbeat|user-heartbeats/, (req, res) => json(res, 200, {})],
 ];
 
+// Missing asset ids are appended to webclient/assets/missing.txt so they can be
+// fetched once with `node tools/fetch_assets.js --missing`.
 function unhandledAsset(key) {
   if (key && !unhandled.has('asset:' + key)) {
     unhandled.add('asset:' + key);
     console.log(`backend: asset ${key} not in local store`);
+    if (/^\d+$/.test(String(key))) {
+      fs.mkdirSync(ASSETS, { recursive: true });
+      fs.appendFileSync(path.join(ASSETS, 'missing.txt'), key + '\n');
+    }
   }
 }
 

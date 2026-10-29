@@ -1,5 +1,7 @@
 webclient/files/
 webclient/overlay/
+webclient/assets/*
+!webclient/assets/.gitkeep
 .pkgcache/
 screenshots/latest*
 screenshots/*.webm

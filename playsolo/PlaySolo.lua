@@ -93,19 +93,34 @@ task.spawn(function()
 		return model, joints
 	end
 
-	local character, joints = buildCharacter()
-	character.Parent = workspace
-	try("set Character", function()
-		player.Character = character
+	-- Prefer the engine's own character (player:LoadCharacter builds Roblox's
+	-- default avatar from the local content/avatar files); fall back to a
+	-- plain-parts rig only if that fails.
+	local character, joints
+	local loaded = try("LoadCharacter", function()
+		player:LoadCharacter()
 	end)
+	if loaded and player.Character then
+		character = player.Character
+		local parts = {}
+		for _, d in character:GetDescendants() do
+			if d:IsA("BasePart") then table.insert(parts, d.Name .. "(" .. d.ClassName .. ")") end
+		end
+		log("engine character:", character.Name, #parts, "parts:", table.concat(parts, " "))
+	else
+		character, joints = buildCharacter()
+		character.Parent = workspace
+		try("set Character", function()
+			player.Character = character
+		end)
+	end
 	local humanoid = character:WaitForChild("Humanoid")
 	local root = character:WaitForChild("HumanoidRootPart")
-	root.CFrame = CFrame.new(0, 103, 0)
 	log("character spawned at", tostring(root.Position))
 
-	-- Procedural classic walk: swing arms and legs with speed (no animation assets).
+	-- Procedural classic walk for the fallback rig only (no animation assets).
 	local phase = 0
-	RunService.Stepped:Connect(function(_, dt)
+	if joints then RunService.Stepped:Connect(function(_, dt)
 		local speed = (root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude
 		local amp = 0
 		if humanoid.FloorMaterial == Enum.Material.Air then
@@ -120,7 +135,7 @@ task.spawn(function()
 		end
 		joints.rs.DesiredAngle, joints.ls.DesiredAngle = amp, amp
 		joints.rh.DesiredAngle, joints.lh.DesiredAngle = -amp, -amp
-	end)
+	end) end
 
 	-- What a game server does when a player joins: StarterGui -> PlayerGui,
 	-- StarterPlayerScripts -> PlayerScripts, StarterCharacterScripts -> character.
@@ -164,12 +179,28 @@ task.spawn(function()
 			local params = RaycastParams.new()
 			params.FilterDescendantsInstances = { character }
 			params.FilterType = Enum.RaycastFilterType.Exclude
-			local hit = workspace:Raycast(placeView.Position, placeView.LookVector * 1000, params)
-			local target = hit and hit.Position or (placeView.Position + look * 80)
-			-- stand a little way in front of what the camera was looking at
-			local stand = target - look * 120
-			local down = workspace:Raycast(stand + Vector3.new(0, 200, 0), Vector3.new(0, -400, 0), params)
-			if down then stand = down.Position end
+			-- Walk along the camera's view and stand on the first wide, flat
+			-- open ground found (not on or inside props).
+			local stand
+			for d = 20, 400, 10 do
+				local p = placeView.Position + look * d
+				local down = workspace:Raycast(Vector3.new(p.X, p.Y + 300, p.Z), Vector3.new(0, -1000, 0), params)
+				if down and down.Normal.Y > 0.95 and down.Instance:IsA("BasePart")
+					and down.Instance.Size.X >= 40 and down.Instance.Size.Z >= 40 then
+					-- and nothing tall right in front of it
+					local ahead = workspace:Raycast(down.Position + Vector3.new(0, 3, 0), look * 12, params)
+					if not ahead then
+						stand = down.Position
+						break
+					end
+				end
+			end
+			if not stand then
+				local hit = workspace:Raycast(placeView.Position, placeView.LookVector * 1000, params)
+				stand = (hit and hit.Position or (placeView.Position + look * 80)) - look * 120
+				local down = workspace:Raycast(stand + Vector3.new(0, 200, 0), Vector3.new(0, -400, 0), params)
+				if down then stand = down.Position end
+			end
 			yaw0 = math.atan2(-look.X, -look.Z)
 			root.CFrame = CFrame.new(stand + Vector3.new(0, 4, 0)) * CFrame.Angles(0, yaw0, 0)
 			log("moved to", tostring(stand))
