@@ -97,7 +97,8 @@ fs.mkdirSync(path.dirname(shot), { recursive: true });
   page.on('pageerror', (e) => { w(`PAGEERROR: ${e.stack || e}`); console.log('PAGEERROR', String(e.stack || e).slice(0, 1500)); });
   page.on('crash', () => { w('PAGE CRASHED'); console.log('PAGE CRASHED'); });
   page.on('worker', (wk) => wk.on('console', (m) => w(`worker ${m.type()}: ${m.text()}`)));
-  await page.goto(`http://localhost:${server.address().port}/${query}`);
+  // HOST=play.localhost serves the page from the host name Roblox expects locally.
+  await page.goto(`http://${process.env.HOST || 'localhost'}:${server.address().port}/${query}`);
   // DEBUGPAUSE=<sec>: pause the main thread then and print its call stack.
   if (process.env.DEBUGPAUSE) {
     const dbg = await context.newCDPSession(page);

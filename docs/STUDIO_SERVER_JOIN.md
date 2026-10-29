@@ -97,6 +97,27 @@ Original kept as `/home/user/studio/app/RobloxStudioBeta.exe.orig`
   (0.745), different build numbers. The replication handshake and instance
   replication agree in practice; the script bytecode format is not yet verified.
 
+## Ruled out: page host name and missing web APIs
+
+- `http://play.localhost:8080/games/start?placeId=1818` (`HOST=play.localhost`
+  for `tools/run_headless.js`) joins the same way as `localhost:8080`, and the
+  same 7 scripts fail. WasmPlayer.js only checks whether the host is
+  `roblox.com`/`*.roblox.com`/`*.robloxlabs.com`; any other host (localhost or
+  play.localhost) takes the `__wasmDevSettings.apiProxy` path.
+- Every HTTP call the engine makes reaches `tools/backend.js` (it logs them). The
+  ones that 404 during a join are presentation and policy APIs (economy asset
+  details, games, universes, player-policy, product-experimentation,
+  player-hydration, voice, groups, checkout, modals, shop widgets). None is
+  about scripts.
+- Script bytecode is not fetched over HTTP: the client reads it inline from
+  the replicated property stream (wasm string ` << bpfBytecode ProtectedString`,
+  the same batched deserializer exists in Studio at 0x14423f899), and its loader
+  gets 0 bytes.
+- Studio's own client can't be started on its own (`run_client.sh`): it takes
+  its flags from the editor that normally spawns it ("Found startup config
+  from in memory cache" → "Does not contain application settings table"). The
+  reference test has to go through the editor's Test > Server & Clients.
+
 ## Next steps
 
 1. Find the code that actually writes the script source/bytecode for a peer
