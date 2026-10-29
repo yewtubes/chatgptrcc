@@ -162,7 +162,3 @@ Assets seen that the platform can't serve yet (`asset misses`):
 - **Script bytecode.** Game scripts fail with `bytecode corrupted`: the 2026
   client requires Roblox's integrity footer on bytecode (see
   `docs/STUDIO_SERVER_JOIN.md`). API redirection does not affect this.
-- **Studio sign-in under Wine.** The browser login hands the OAuth code from a
-  second Studio process to the first over `\\.\pipe\RBX_STUDIO_NS-<pid>`; under
-  winehq-staging 11.20 the receiving Studio reads the connection but never
-  dispatches it. See `docs/SELF_HOSTING.md`.

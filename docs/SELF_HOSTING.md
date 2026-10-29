@@ -123,11 +123,27 @@ LOCAL_RCC=1 tools/studio/run_server.sh 1818     # place 1818's file from the dat
 reads the certificate hash, registers the server (`game_servers`), heartbeats it
 every 30 s and closes it when Studio exits. `gamejoin` then hands players to it.
 
-Studio has to be signed in once per Wine prefix. Studio's login page needs
-WebView2; without it Studio falls back to "Login via Browser", which goes through
-`tools/studio/bin/xdg-open` (approves for `STUDIO_OAUTH_USER` and hands the code
-back to Studio). Known issue: under winehq-staging 11.20 that hand-back
-(`\\.\pipe\RBX_STUDIO_NS-<pid>`) is not processed by the waiting Studio.
+Studio has to be signed in once per Wine prefix (the session then persists):
+
+```bash
+STUDIO_OAUTH_USER=Builder tools/studio/setup_env.sh
+cd $STUDIO_DIR/app && PATH=$PWD/../../robloxwebclient/tools/studio/bin:$PATH \
+  NO_PROXY="$NO_PROXY,.robloxlabs.com" WINEPREFIX=$STUDIO_DIR/prefix DISPLAY=:78 \
+  wine RobloxStudioBeta.exe -baseUrl https://www.sitetest1.robloxlabs.com
+# click "Login via Browser" (xdotool mousemove 749 460 click 1 on the 1280x800 display)
+```
+
+Studio's embedded login page (WebView2) doesn't load under Wine, so it offers
+"Login via Browser". That opens our `/oauth/v1/authorize` through
+`tools/studio/bin/xdg-open`, which approves it for `STUDIO_OAUTH_USER` and
+launches a second Studio with the `roblox-studio-auth-sitetest1:/?code=…`
+redirect, as a desktop's protocol handler would. That second Studio passes the
+code to the first over `\\.\pipe\RBX_STUDIO_NS-<pid>`. The message carries a
+`BuildIdentifier` derived from the base URL in `AppSettings.xml`, and the waiting
+Studio ignores messages from a different one, so `AppSettings.xml` must name the
+same base URL Studio is started with (`install_studio.sh` writes
+`https://www.sitetest1.robloxlabs.com`). Then the waiting Studio exchanges the
+code at `/oauth/v1/token` and shows "Welcome, Builder".
 
 ## 7. Run
 

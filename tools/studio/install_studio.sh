@@ -43,7 +43,7 @@ cat > "$APP/AppSettings.xml" <<'XML'
 <?xml version="1.0" encoding="UTF-8"?>
 <Settings>
 	<ContentFolder>content</ContentFolder>
-	<BaseUrl>http://www.roblox.com</BaseUrl>
+	<BaseUrl>https://www.sitetest1.robloxlabs.com</BaseUrl>
 </Settings>
 XML
 # Studio trusts the local backend's CA (backend-tls/, see tools/studio/make_tls.sh) and nothing else changes.
