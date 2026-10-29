@@ -22,9 +22,10 @@ What works:
   `local-relay` WebSocket transport, and a WebSocket→UDP relay. The client
   sends RakNet connection requests to `RCC_HOST:RCC_PORT`.
 
-What does not exist here is a game server. RccService is not public, and
-Roblox Studio (which runs under Wine in this container) needs a Roblox account
-login before it will host anything.
+Game server: Roblox Studio 0.745 runs under Wine as the server, logged in
+against the local backend (OAuth, user info and security cookie are all served
+by `tools/backend.js` through `tools/studio_backend.js` on the sitetest1 host
+names). See "Studio as the game server" below.
 
 ## Running
 
@@ -113,3 +114,28 @@ EM_CONFIG=... tools/build_glue.sh
   `.lua` files in `ExtraContent/scripts` are not used.
 - The engine has `NetworkServer`/`ServerReplicator` code, but it does not
   expose starting a server to Lua.
+
+## Studio as the game server
+`tools/studio/run_server.sh <place.rbxl> [port]` starts a local server.
+
+- Studio's `StartServer` task ignores the place path argument. It always
+  loads `%LOCALAPPDATA%\Roblox\server.rbxl`, the file the editor writes before
+  it spawns the server for Test > Server and Clients. The launcher copies the
+  place there first and passes the same arguments the editor does (captured
+  with `tools/studio/watch_procs.sh`).
+- The server listens with RakNet on the given UDP port and with RbxTransport
+  (QUIC, WebTransport over HTTP/3 with a self-signed
+  `CN=Roblox RtcIo WebTransport` ECDSA certificate) on a second port.
+- Studio's own client (`-task StartClient -rbxTransportToken bG9jYWxfdGVzdA==
+  -rbxTransportPort <port>`) joins over RbxTransport and plays: see
+  `screenshots/studio-server-baseplate-*.png`.
+- Studio gets its own production flags (`webclient/flags/PCStudioApp.json`,
+  fetched once from clientsettingscdn) plus `PCStudioApp.local.json`.
+
+WASM client status: with `RBX_TRANSPORT_PORT` set, the join script carries
+`NetStackPort`/`NetStackTokenValue`, and the client selects RbxTransport like
+Studio's client does. In the browser that transport runs through the
+`rbx_wasm_rna_*` imports (WebTransport sessions, streams and datagrams with
+ring buffers back into the engine), which `rbxlib.js` still stubs. That binding
+is the remaining piece. Over RakNet the Studio server rejects the handshake
+(connection error 6).

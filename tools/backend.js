@@ -104,6 +104,9 @@ function joinScript(placeId) {
     joinScript: {
       ClientPort: 0, MachineAddress: host, ServerPort: port,
       ServerConnections: [{ Address: host, Port: port }], UdmuxEndpoints: [], DirectServerReturn: true,
+      // Studio's local server also listens with RbxTransport (RBX_TRANSPORT_PORT); Studio's
+      // own client connects there with the token "local_test".
+      ...(process.env.RBX_TRANSPORT_PORT ? { NetStackPort: +process.env.RBX_TRANSPORT_PORT, NetStackTokenValue: 'bG9jYWxfdGVzdA==' } : {}),
       TokenGenAlgorithm: 0, PepperId: 0, TokenValue: '', PingUrl: '', PingInterval: 0,
       UserName: USER.name, DisplayName: USER.displayName, SeleniumTestMode: false, UserId: USER.id,
       RobloxLocale: 'en_us', GameLocale: 'en_us', SuperSafeChat: false, FlexibleChatEnabled: false,
@@ -204,9 +207,15 @@ const ROUTES = [
   [/^apis\.roblox\.com$/, /^\/oauth\/v1\/certs/, (req, res) => json(res, 200, { keys: [] })],
 
   // Fast flags: engine defaults plus webclient/LocalFlags.json.
-  [/^clientsettings(cdn)?\.roblox\.com$/, /^\/v\d\/settings\/application\//, (req, res) => {
-    let applicationSettings = {};
-    try { applicationSettings = JSON.parse(fs.readFileSync(FLAGS, 'utf8')); } catch {}
+  // Other apps (e.g. Studio's PCStudioApp) get their own production set from webclient/flags/<app>.json,
+  // plus local overrides from <app>.local.json.
+  [/^clientsettings(cdn)?\.roblox\.com$/, /^\/v\d\/settings\/application\//, (req, res, u) => {
+    const app = path.basename(u.pathname);
+    const read = f => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+    const own = read(path.join(ROOT, 'webclient', 'flags', `${app}.json`));
+    const applicationSettings = own
+      ? { ...own.applicationSettings, ...read(path.join(ROOT, 'webclient', 'flags', `${app}.local.json`)) }
+      : read(FLAGS) || {};
     json(res, 200, { applicationSettings });
   }],
   [/^clientsettings(cdn)?\.roblox\.com$/, /./, (req, res) => json(res, 200, {})],
