@@ -43,66 +43,83 @@ task.spawn(function()
 		RunService:Run()
 	end)
 
-	local ok = try("LoadCharacter", function()
-		player:LoadCharacter()
-	end)
-	if not ok or not player.Character then
-		-- Fallback: build a character from the default rig if LoadCharacter is
-		-- not allowed in this DataModel.
-		log("waiting for character")
-		player.CharacterAdded:Wait()
+	-- Build a classic 2008 R6 character from plain parts, so nothing depends on
+	-- avatar or catalog assets (there is no Roblox backend here).
+	local function buildCharacter()
+		local yellow, blue, green = BrickColor.new("Bright yellow"), BrickColor.new("Bright blue"), BrickColor.new("Br. yellowish green")
+		local model = Instance.new("Model")
+		model.Name = player.Name
+		local function part(name, size, color, cf)
+			local p = Instance.new("Part")
+			p.Name, p.Size, p.BrickColor, p.CFrame = name, size, color, cf
+			p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+			p.Parent = model
+			return p
+		end
+		local base = CFrame.new(0, 3, 0)
+		local root = part("HumanoidRootPart", Vector3.new(2, 2, 1), blue, base)
+		root.Transparency = 1
+		local torso = part("Torso", Vector3.new(2, 2, 1), blue, base)
+		local head = part("Head", Vector3.new(2, 1, 1), yellow, base * CFrame.new(0, 1.5, 0))
+		local mesh = Instance.new("SpecialMesh", head)
+		mesh.MeshType = Enum.MeshType.Head
+		mesh.Scale = Vector3.new(1.25, 1.25, 1.25)
+		local face = Instance.new("Decal", head)
+		face.Name, face.Texture = "face", "rbxasset://textures/face.png"
+		local larm = part("Left Arm", Vector3.new(1, 2, 1), yellow, base * CFrame.new(-1.5, 0, 0))
+		local rarm = part("Right Arm", Vector3.new(1, 2, 1), yellow, base * CFrame.new(1.5, 0, 0))
+		local lleg = part("Left Leg", Vector3.new(1, 2, 1), green, base * CFrame.new(-0.5, -2, 0))
+		local rleg = part("Right Leg", Vector3.new(1, 2, 1), green, base * CFrame.new(0.5, -2, 0))
+		local function motor(name, p0, p1, c0, c1)
+			local m = Instance.new("Motor6D")
+			m.Name, m.Part0, m.Part1, m.C0, m.C1 = name, p0, p1, c0, c1
+			m.MaxVelocity = 0.1
+			m.Parent = p0
+			return m
+		end
+		local R = CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0)
+		motor("RootJoint", root, torso, R, R)
+		motor("Neck", torso, head, CFrame.new(0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0), CFrame.new(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0))
+		local joints = {
+			rs = motor("Right Shoulder", torso, rarm, CFrame.new(1, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0), CFrame.new(-0.5, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0)),
+			ls = motor("Left Shoulder", torso, larm, CFrame.new(-1, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0), CFrame.new(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0)),
+			rh = motor("Right Hip", torso, rleg, CFrame.new(1, -1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0), CFrame.new(0.5, 1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0)),
+			lh = motor("Left Hip", torso, lleg, CFrame.new(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0), CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0)),
+		}
+		local humanoid = Instance.new("Humanoid")
+		humanoid.RigType = Enum.HumanoidRigType.R6
+		humanoid.Parent = model
+		model.PrimaryPart = root
+		return model, joints
 	end
 
-	local character = player.Character
+	local character, joints = buildCharacter()
+	character.Parent = workspace
+	try("set Character", function()
+		player.Character = character
+	end)
 	local humanoid = character:WaitForChild("Humanoid")
 	local root = character:WaitForChild("HumanoidRootPart")
+	root.CFrame = CFrame.new(0, 103, 0)
 	log("character spawned at", tostring(root.Position))
 
-	-- Avatar assets need a Roblox login (the head mesh, for one), so dress the
-	-- character the classic way using only built-in meshes and local textures.
-	local function classicLook(char)
-		try("classic look", function()
-			local colors = char:FindFirstChildOfClass("BodyColors") or Instance.new("BodyColors", char)
-			local yellow, blue, green = BrickColor.new("Bright yellow"), BrickColor.new("Bright blue"), BrickColor.new("Br. yellowish green")
-			colors.HeadColor, colors.LeftArmColor, colors.RightArmColor = yellow, yellow, yellow
-			colors.TorsoColor = blue
-			colors.LeftLegColor, colors.RightLegColor = green, green
-			local head = char:FindFirstChild("Head")
-			if head and head:IsA("MeshPart") then
-				-- Dynamic head whose mesh could not be fetched: hide it and weld a
-				-- classic head on top.
-				head.Transparency = 1
-				for _, d in head:GetChildren() do
-					if d:IsA("Decal") then d:Destroy() end
-				end
-				local classic = Instance.new("Part")
-				classic.Name = "ClassicHead"
-				classic.Size = Vector3.new(2, 1, 1)
-				classic.BrickColor = yellow
-				classic.CanCollide = false
-				classic.Massless = true
-				classic.CFrame = head.CFrame
-				local mesh = Instance.new("SpecialMesh", classic)
-				mesh.MeshType = Enum.MeshType.Head
-				mesh.Scale = Vector3.new(1.25, 1.25, 1.25)
-				local face = Instance.new("Decal", classic)
-				face.Name = "face"
-				face.Texture = "rbxasset://textures/face.png"
-				local weld = Instance.new("WeldConstraint", classic)
-				weld.Part0, weld.Part1 = head, classic
-				classic.Parent = char
-			elseif head then
-				head.BrickColor = yellow
-				if not head:FindFirstChildOfClass("SpecialMesh") and not head:IsA("MeshPart") then
-					Instance.new("SpecialMesh", head).MeshType = Enum.MeshType.Head
-				end
-			end
-		end)
-	end
-	classicLook(character)
-	player.CharacterAdded:Connect(function(char)
-		char:WaitForChild("Head")
-		classicLook(char)
+	-- Procedural classic walk: swing arms and legs with speed (no animation assets).
+	local phase = 0
+	RunService.Stepped:Connect(function(_, dt)
+		local speed = (root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude
+		local amp = 0
+		if humanoid.FloorMaterial == Enum.Material.Air then
+			joints.rs.DesiredAngle, joints.ls.DesiredAngle = 3.14, -3.14
+			joints.rh.DesiredAngle, joints.lh.DesiredAngle = 0, 0
+			return
+		elseif speed > 0.5 then
+			phase += dt * speed * 0.9
+			amp = math.sin(phase)
+		else
+			phase = 0
+		end
+		joints.rs.DesiredAngle, joints.ls.DesiredAngle = amp, amp
+		joints.rh.DesiredAngle, joints.lh.DesiredAngle = -amp, -amp
 	end)
 
 	-- Spawn where the place's camera was looking (the place has no SpawnLocation).
@@ -183,9 +200,8 @@ task.spawn(function()
 
 	humanoid.Died:Connect(function()
 		task.wait(3)
-		try("respawn", function()
-			player:LoadCharacter()
-		end)
+		humanoid.Health = humanoid.MaxHealth
+		root.CFrame = CFrame.new(0, 103, 0)
 	end)
 	log("ready")
 end)

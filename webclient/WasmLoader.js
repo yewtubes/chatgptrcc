@@ -24,9 +24,8 @@
   let authCookie = params.get('cookie') || 'local-dev';
   window.__wasmDevSettings = {
     baseUrl: params.get('baseUrl') || undefined,
-    // Route the engine's roblox.com requests through the local server
-    // (/proxy/<url>), which forwards them without browser CORS restrictions.
-    apiProxy: params.get('proxy') === '0' ? undefined : {
+    // The engine's roblox.com requests go to the local backend (/proxy/<url>).
+    apiProxy: {
       url: (u) => `${location.origin}/proxy/${u}`,
       authHeaders: () => ({}),
     },
@@ -38,6 +37,20 @@
     allocateCookieFromPool: async () => null,
     getFlagOverrides: () => flagOverrides,
   };
+
+  // Every roblox.com / rbxcdn.com request from the page (flags, locales, ...)
+  // goes to the local backend instead (tools/backend.js).
+  const toBackend = (u) => {
+    try {
+      const x = new URL(u, location.href);
+      if (x.origin !== location.origin && /(^|\.)(roblox\.com|rbxcdn\.com)$/.test(x.hostname)) return `${location.origin}/proxy/${x.href}`;
+    } catch (e) {}
+    return u;
+  };
+  const nativeFetch = window.fetch;
+  window.fetch = (i, init) => nativeFetch(typeof i === 'string' || i instanceof URL ? toBackend(String(i)) : i, init);
+  const nativeOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (m, u, ...rest) { return nativeOpen.call(this, m, toBackend(u), ...rest); };
 
   // WasmPlayer.js hardcodes wss://localhost/local-relay for local RCC mode;
   // use this server's relay instead.
