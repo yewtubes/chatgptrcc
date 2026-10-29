@@ -52,3 +52,9 @@ extracontent-models ExtraContent/models
 MAP
 
 node "$ROOT/tools/fill_missing.js" "$ROOT/webclient/WebClient.metadata.json" "$OUT" "$PKG/stage"
+
+# The web build's shaders_glsles3_web.pack is not public. The desktop GLSL pack
+# has the same layout; WebClient.js converts its shaders to GLSL ES at load time.
+get "$PLAYER" shaders "$PKG/player"
+mkdir -p "$OUT/shaders"
+unzip -p "$PKG/player/shaders.zip" shaders_glsl3.pack > "$OUT/shaders/shaders_glsles3_web.pack"

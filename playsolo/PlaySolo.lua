@@ -39,10 +39,6 @@ task.spawn(function()
 		log("no local player")
 		return
 	end
-	try("set Name", function()
-		player.Name = "Player1"
-	end)
-
 	try("RunService:Run", function()
 		RunService:Run()
 	end)
