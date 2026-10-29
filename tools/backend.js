@@ -117,8 +117,84 @@ function joinScript(placeId) {
   };
 }
 
+// ---- OAuth (Roblox Studio login) ------------------------------------------
+// Every authorization request is approved for the local user; tokens are
+// opaque random strings remembered in memory.
+const tokens = new Map();
+const codes = new Map();
+function apiBase(req) {
+  const h = req.headers['x-original-host'] || 'apis.roblox.com';
+  return `https://${h.replace(/^[^.]+\./, 'apis.')}`;
+}
+function newToken() { return crypto.randomBytes(24).toString('hex'); }
+function issueTokens(scope) {
+  const access = newToken(), refresh = newToken();
+  tokens.set(access, { user: USER, scope });
+  tokens.set(refresh, { user: USER, scope, refresh: true });
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const idToken = `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: String(USER.id), name: USER.displayName, nickname: USER.displayName,
+    preferred_username: USER.name, created_at: 1136073600, profile: `https://www.roblox.com/users/${USER.id}/profile`, iat: now, exp: now + 3600 })}.`;
+  return { access_token: access, refresh_token: refresh, token_type: 'Bearer', expires_in: 3600, scope: scope || 'openid profile', id_token: idToken };
+}
+function formOrJson(body) {
+  const t = body.toString();
+  try { return JSON.parse(t); } catch {}
+  return Object.fromEntries(new URLSearchParams(t));
+}
+
 // [host regex, path regex, handler(req, res, url, body)]
 const ROUTES = [
+  [/^apis\.roblox\.com$/, /^\/oauth\/\.well-known\/openid-configuration/, (req, res) => {
+    // Same shape as Roblox's own discovery document, pointed at this host.
+    const base = apiBase(req), b = base + '/oauth', create = base.replace('://apis.', '://create.');
+    json(res, 200, {
+      issuer: b + '/', authorization_endpoint: b + '/v1/authorize', token_endpoint: b + '/v1/token',
+      introspection_endpoint: b + '/v1/token/introspect', revocation_endpoint: b + '/v1/token/revoke',
+      resources_endpoint: b + '/v1/token/resources', userinfo_endpoint: b + '/v1/userinfo', jwks_uri: b + '/v1/certs',
+      registration_endpoint: create + '/dashboard/credentials', service_documentation: create + '/docs/reference/cloud',
+      scopes_supported: ['openid', 'profile', 'email', 'verification', 'credentials', 'age', 'premium', 'roles', 'attributes'],
+      response_types_supported: ['none', 'code'], subject_types_supported: ['public'],
+      id_token_signing_alg_values_supported: ['ES256'],
+      claims_supported: ['sub', 'type', 'iss', 'aud', 'exp', 'iat', 'nonce', 'name', 'nickname', 'preferred_username', 'created_at',
+        'profile', 'picture', 'email', 'email_verified', 'verified', 'age_checked', 'age_bracket', 'premium', 'roles', 'internal_user', 'attributes'],
+      token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
+    });
+  }],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/authorize/, (req, res, u) => {
+    const redirect = u.searchParams.get('redirect_uri');
+    const code = newToken();
+    codes.set(code, { scope: u.searchParams.get('scope'), challenge: u.searchParams.get('code_challenge') });
+    const loc = new URL(redirect);
+    loc.searchParams.set('code', code);
+    if (u.searchParams.get('state')) loc.searchParams.set('state', u.searchParams.get('state'));
+    console.log(`backend: oauth authorize approved for ${USER.name} -> ${loc.protocol}//${loc.host}${loc.pathname}`);
+    res.writeHead(302, { Location: loc.href });
+    res.end();
+  }],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/token\/revoke/, (req, res) => json(res, 200, {})],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/token\/introspect/, async (req, res, u, body) => {
+    const t = tokens.get(formOrJson(body).token);
+    json(res, 200, t ? { active: true, sub: String(USER.id), scope: t.scope, client_id: 'studio', exp: Math.floor(Date.now() / 1000) + 3600 } : { active: false });
+  }],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/token\/resources/, (req, res) => json(res, 200, { resource_infos: [{ owner: { id: String(USER.id), type: 'User' }, resources: {} }] })],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/token/, async (req, res, u, body) => {
+    const p = formOrJson(body);
+    if (p.grant_type === 'authorization_code' && !codes.has(p.code)) return json(res, 400, { error: 'invalid_grant' });
+    const c = codes.get(p.code) || {};
+    codes.delete(p.code);
+    const out = issueTokens(c.scope || p.scope);
+    console.log(`backend: oauth ${p.grant_type} -> tokens for ${USER.name}`);
+    json(res, 200, out);
+  }],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/userinfo/, (req, res) => json(res, 200, {
+    sub: String(USER.id), name: USER.displayName, nickname: USER.displayName, preferred_username: USER.name,
+    created_at: 1136073600, profile: `https://www.roblox.com/users/${USER.id}/profile`, picture: null,
+    email: 'player1@localhost', email_verified: true, verified: true, age_checked: true, age_bracket: 0,
+    premium: false, roles: [], internal_user: false, attributes: {},
+  })],
+  [/^apis\.roblox\.com$/, /^\/oauth\/v1\/certs/, (req, res) => json(res, 200, { keys: [] })],
+
   // Fast flags: engine defaults plus webclient/LocalFlags.json.
   [/^clientsettings(cdn)?\.roblox\.com$/, /^\/v\d\/settings\/application\//, (req, res) => {
     let applicationSettings = {};
@@ -190,6 +266,10 @@ const ROUTES = [
       }),
     });
   }],
+
+  // Account standing: not moderated, machine OK.
+  [/^usermoderation\.roblox\.com$/, /^\/v1\/not-approved/, (req, res) => json(res, 200, {})],
+  [/^apis\.roblox\.com$/, /^\/validate-machine/, (req, res) => json(res, 200, { success: true, isValid: true, messages: [] })],
 
   // App policy: allow the defaults.
   [/^apis\.roblox\.com$/, /guac|universal-app-configuration|app-policy/, (req, res) => json(res, 200, {})],
