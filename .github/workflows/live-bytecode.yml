@@ -82,7 +82,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: original-webclient-bytecode-${{ github.run_id }}
-          path: ci-evidence/
+          # Preserve hashes, rejection records and logs without publishing raw
+          # captured vendor bytecode. Full captures remain local to the runner.
+          path: |
+            ci-evidence/
+            !ci-evidence/**/*.bc
+            !ci-evidence/**/*.rsb1
           if-no-files-found: warn
       - uses: actions/cache/save@v4
         if: always()

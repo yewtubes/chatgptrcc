@@ -62,7 +62,14 @@ async function attachCapture(browser) {
           const state = await evaluate(frame.callFrameId, `(() => {
             const h = new Uint8Array(memories[0].buffer), p = $var30.value;
             let end = p; while (end < h.length && h[end] && end - p < 4096) ++end;
-            return { chunk: new TextDecoder().decode(h.slice(p, end)), errorOffset: ${CORRUPTED_OFFSET}, local2: $var2.value, version: $var33.value };
+            const d = new DataView(h.buffer);
+            // Read the effective policy in the same paused loader invocation.
+            // Static defaults and LocalFlags.json alone do not establish it.
+            const validationPolicy = Object.fromEntries([
+              ['LsbOptimizationDetail', 8106748], ['LsbImproveCompatibilityReport', 8106760],
+              ['LsbOptimizeMax', 8106784], ['LsbOptimizeMin', 8106796], ['LsbValidateMin', 8106808]
+            ].map(([name, address]) => [name, d.getInt32(address, true)]));
+            return { chunk: new TextDecoder().decode(h.slice(p, end)), errorOffset: ${CORRUPTED_OFFSET}, local2: $var2.value, version: $var33.value, validationPolicy };
           })()`, sessionId);
           fs.appendFileSync(path.join(OUT, 'rejections.jsonl'), JSON.stringify(state) + '\n');
           if (/(?:^|\.)PlayerModule$/.test(state.chunk)) playerModuleRejected = true;
