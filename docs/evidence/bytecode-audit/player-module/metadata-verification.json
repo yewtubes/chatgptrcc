@@ -1,0 +1,98 @@
+{
+  "static_verification_only": true,
+  "wasm_sha256": "d72c52618f5c153c9b17a97e644914d43918c7122d754d96f79e8323acc6a15d",
+  "inexperience_rbxm_sha256": "5db5363e4dbb07444b11f4a01915a7731f6dffbc5369120190196f92e7e0d5e0",
+  "inexperience_module_count": 34225,
+  "supplied_signatures_verified": 5,
+  "negative_checks_passed": 15,
+  "payloads": [
+    {
+      "module": "PatchRoot.DataModelInstances.CorePackages.Workspace.Packages._Workspace.CoreScriptsProfiler.CoreScriptsProfiler.ProfilerDataParser",
+      "stored_sha256": "556f0bd987c27d22dbd1560671e02d85006ceed8d7c31909f64d06247cc63671",
+      "size": 2348,
+      "sha256": "98890fbfbaedd2bd480e39911f045562d30c3fe9c1b0773bd23aba1e71aae4ef",
+      "bytecode_version": 9,
+      "status": "verified-existing-signature",
+      "metadata_version": 1,
+      "report_marker_ok": true,
+      "signature_matches_body": true,
+      "negative_checks": {
+        "body_bit_flip": "signature-mismatch",
+        "signature_bit_flip": "signature-mismatch",
+        "truncated_footer": "missing-v1-metadata"
+      }
+    },
+    {
+      "module": "PatchRoot.DataModelInstances.CoreGui.RobloxGui.Modules.Settings.SettingsHub",
+      "stored_sha256": "3537bd2916a8abd384d831452fb37e99fdbb7e1c41b0b8b438e3c8b9c0a38ca7",
+      "size": 169187,
+      "sha256": "5284c05dd688583b718c81d38c25eb88903763737b9388c410912c1b3d4f958c",
+      "bytecode_version": 9,
+      "status": "verified-existing-signature",
+      "metadata_version": 1,
+      "report_marker_ok": true,
+      "signature_matches_body": true,
+      "negative_checks": {
+        "body_bit_flip": "signature-mismatch",
+        "signature_bit_flip": "signature-mismatch",
+        "truncated_footer": "missing-v1-metadata"
+      }
+    },
+    {
+      "module": "PatchRoot.DataModelInstances.CoreGui.RobloxGui.Modules.Server.FreeCamera.FreeCameraInstaller",
+      "stored_sha256": "5f0fb772cb8ccf6ff3bf8edb697968663e85385117e7caeebf194e40c624b459",
+      "size": 2600,
+      "sha256": "6addf6a5becb19c767165b579fc3290b744fdd2f976451303cd52319b5bff3b2",
+      "bytecode_version": 9,
+      "status": "verified-existing-signature",
+      "metadata_version": 1,
+      "report_marker_ok": true,
+      "signature_matches_body": true,
+      "negative_checks": {
+        "body_bit_flip": "signature-mismatch",
+        "signature_bit_flip": "signature-mismatch",
+        "truncated_footer": "missing-v1-metadata"
+      }
+    },
+    {
+      "module": "PatchRoot.DataModelInstances.CoreGui.RobloxGui.Modules.Server.ServerPlayer.ServerPlayerInstaller",
+      "stored_sha256": "82450079320124c026ce6351d50d52ba8b9829164b7b48c72beaf4afb738a203",
+      "size": 876,
+      "sha256": "4e91aec6dd5d5e7940f8b6e0ce78e5721179932c1769e4afc36d3fd2ba336543",
+      "bytecode_version": 9,
+      "status": "verified-existing-signature",
+      "metadata_version": 1,
+      "report_marker_ok": true,
+      "signature_matches_body": true,
+      "negative_checks": {
+        "body_bit_flip": "signature-mismatch",
+        "signature_bit_flip": "signature-mismatch",
+        "truncated_footer": "missing-v1-metadata"
+      }
+    },
+    {
+      "module": "PatchRoot.DataModelInstances.CoreGui.RobloxGui.Modules.InGameMenu.Components.GameSettingsPage.VersionReporter",
+      "stored_sha256": "e178cb1ad0b22cd75b522d4b16e2d7877d92fb71f5e0533693a360e88df97d4e",
+      "size": 8255,
+      "sha256": "391f1ef628756bba4e964ac177929a2baad2ea5c95eb2c73dd4ca0f400f8a44b",
+      "bytecode_version": 9,
+      "status": "verified-existing-signature",
+      "metadata_version": 1,
+      "report_marker_ok": true,
+      "signature_matches_body": true,
+      "negative_checks": {
+        "body_bit_flip": "signature-mismatch",
+        "signature_bit_flip": "signature-mismatch",
+        "truncated_footer": "missing-v1-metadata"
+      }
+    }
+  ],
+  "actual_player_module": {
+    "sender_equals_receiver": true,
+    "size": 639,
+    "sha256": "2b2c6621784d9188e66152ed3fc98754d7a27e837938172b5557bfaec6b2237a",
+    "bytecode_version": 13,
+    "status": "missing-v1-metadata"
+  },
+  "live_execution_status": "Run 41054344473: actual PlayerModule rejected reason 3; signature comparison flag 0; controls_fixed false."
+}

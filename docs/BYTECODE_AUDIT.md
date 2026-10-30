@@ -12,9 +12,27 @@ Destination: `yewtubes/chatgptrcc`. Work was performed in a separate clone.
 | Are opcodes/AUX words serialized correctly? | For empty, closure/table/loop, and import/vector/method-call fixtures, independently locating instruction regions and undoing only opcode multiplication reproduces plain upstream compilation byte for byte. Recovered code loads in upstream VM 0.744; closure fixture executes and returns 42. | No encoding defect reproduced for these fixtures. This is not execution in Roblox's VM. |
 | Is RSB1 packaging internally sound? | Independent raw-zstd-block golden fixture, pinned zstd/XXH32, binary round trips through 1 MiB, and original local_rcc producer comparison. | Existing successful output matches the reference packaging. An RSB1 checksum is not a cryptographic script signature. |
 | Did fixes change successful output? | The 369-byte sample source produces 512 bytes of encoded Luau and a 369-byte RSB1 container. Baseline and fixed RSB1 SHA-256 are identical. | Sample wire output is unchanged. No network/schema/Studio patch sites were edited. |
-| Is there a further client validation requirement? | Exact loader enters a separate validation path after header checks and before string/prototype decoding; this path can emit `bytecode corrupted`. It checks for additional data and calls a format parser/validator. Signature/hash-key configuration also exists in this build. | Additional validation exists, but the precise cryptographic scheme, trust-path selection, and rejecting sub-check for the failing network scripts remain unproven. No forgery or bypass was attempted. |
+| Is there a further client validation requirement? | Actual PlayerModule fails footer format identification, reason 3, before prototype parsing. Five vendor format-1 signatures independently match the quadratic verification relation and BLAKE3 digest. | Engine metadata is absent. The effective live signature-comparison flag is 0, so a cryptographic comparison failure is not established. No metadata was forged and no policy was changed. |
 | Does bytecode arrive unchanged? | Fresh original-client trace captured five complete payloads, including the real default PlayerModule. Each matches an actual Studio DLL result byte for byte. PlayerModule is 639 bytes; its RSB1 container has an embedded NUL. | **Verified for these five captured scripts**, not for every historical script. |
 | Do LocalScripts run in the original client? | The fresh join creates the Replicator and executes the 99-byte local probe and the 159-byte PlayerScriptsLoader. PlayerModule, RbxCharacterSounds and the larger probe hit the extra validation rejection. | Small locally compiled scripts do run. **Movement is not fixed.** A blanket claim that all local compilation is rejected is false. |
+
+## Latest metadata/policy result (2026-10-30)
+
+[Fresh actual-client run 41054344473](https://github.com/yewtubes/chatgptrcc/actions/runs/41054344473)
+again received the same complete 639-byte PlayerModule and rejected footer
+format identification, reason 3. **Movement remains broken.** Read-only live
+policy capture shows `LsbOptimizationDetail=0`: the later format-1 signature
+comparison is disabled in this configuration. Do not claim that comparison
+rejected PlayerModule or that a private signing service is conclusively the
+remaining runtime blocker.
+
+A verifier-only reconstruction independently matched five existing Roblox
+signatures and rejected fifteen mutated/truncated cases. This establishes the
+signature content of genuine format-1 metadata; it does not change the observed
+runtime failure. Our compiler lacks the engine metadata output stage, and no
+legitimate metadata producer or intact vendor PlayerModule was found in the
+inspected packages. No fabricated footer or verification-policy change was
+sent to the client. See the [full evidence and reproduction](evidence/bytecode-audit/player-module/METADATA.md).
 
 ## Real PlayerModule trace (2026-10-30)
 

@@ -42,3 +42,9 @@ string/prototype decoding. This establishes the immediate metadata failure;
 it does not establish a private-key signing requirement or show a failed
 cryptographic comparison. No fabricated footer or altered integrity check was
 tested. Character movement is not fixed.
+
+The newer [metadata and effective-policy investigation](METADATA.md) records
+run 41054344473. It confirms the same actual PlayerModule failure and reads
+the effective signature-comparison flag as 0. Five vendor signatures were
+verified separately, but a cryptographic comparison failure is not the live
+rejecting stage. Neither run establishes successful movement.
