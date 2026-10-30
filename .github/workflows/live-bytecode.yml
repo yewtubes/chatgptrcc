@@ -40,7 +40,7 @@ jobs:
       - name: Install runner prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends wine64 xvfb xauth scrot xdotool libgl1-mesa-dri libglx-mesa0 libasound2-plugins g++-mingw-w64-x86-64-posix ninja-build
+          sudo apt-get install -y --no-install-recommends wine64 xvfb xauth scrot xdotool libegl1 libgl1-mesa-dri libglx-mesa0 libasound2-plugins g++-mingw-w64-x86-64-posix ninja-build
           python3 -m pip install --break-system-packages aioquic
           npm install --no-save playwright
       - name: Prepare pinned Wine, Studio, browser and original WebClient

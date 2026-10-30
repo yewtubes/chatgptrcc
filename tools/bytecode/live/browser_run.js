@@ -7,6 +7,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const capture = process.argv.includes('--capture');
 const label = capture ? 'capture' : 'baseline';
 const LOADER_OFFSET = 86082284;
+const CORRUPTED_OFFSET = 86093212;
 const WASM_SHA = 'd72c52618f5c153c9b17a97e644914d43918c7122d754d96f79e8323acc6a15d';
 const wasmFile = path.resolve('webclient/live/version-75f1039cb4964863/WebClient.wasm');
 if (crypto.createHash('sha256').update(fs.readFileSync(wasmFile)).digest('hex') !== WASM_SHA)
@@ -20,6 +21,11 @@ async function attachCapture(browser) {
   const socket = new WebSocket(version.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
   let id = 0, hits = 0;
+  const watchedName = (pointer) => `(() => {
+    const h = new Uint8Array(memories[0].buffer), p = ${pointer};
+    let end = p; while (end < h.length && h[end] && end - p < 4096) ++end;
+    return /BytecodeAudit|PlayerModule|PlayerScriptsLoader|RbxCharacterSounds|Animate/.test(new TextDecoder().decode(h.slice(p, end)));
+  })()`;
   const pending = new Map();
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const n = ++id;
@@ -41,13 +47,26 @@ async function attachCapture(browser) {
       await send('Runtime.runIfWaitingForDebugger', {}, session);
     } else if (method === 'Debugger.scriptParsed' && params.scriptLanguage === 'WebAssembly' && params.length > LOADER_OFFSET) {
       try {
-        const result = await send('Debugger.setBreakpoint', { location: { scriptId: params.scriptId, lineNumber: 0, columnNumber: LOADER_OFFSET } }, sessionId);
-        log(`capture breakpoint ${result.breakpointId} session=${sessionId}`);
+        for (const offset of [LOADER_OFFSET, CORRUPTED_OFFSET]) {
+          const pointer = offset === LOADER_OFFSET ? 'new DataView(memories[0].buffer).getUint32($var1.value + 24, true)' : '$var30.value';
+          const result = await send('Debugger.setBreakpoint', { location: { scriptId: params.scriptId, lineNumber: 0, columnNumber: offset }, condition: watchedName(pointer) }, sessionId);
+          log(`capture breakpoint ${result.breakpointId} session=${sessionId}`);
+        }
       } catch (e) { log(`capture breakpoint error: ${e.message}`); }
     } else if (method === 'Debugger.paused') {
       try {
         if (hits >= 32) return;
         const frame = params.callFrames[0];
+        if (frame.location.columnNumber === CORRUPTED_OFFSET) {
+          const state = await evaluate(frame.callFrameId, `(() => {
+            const h = new Uint8Array(memories[0].buffer), p = $var30.value;
+            let end = p; while (end < h.length && h[end] && end - p < 4096) ++end;
+            return { chunk: new TextDecoder().decode(h.slice(p, end)), errorOffset: ${CORRUPTED_OFFSET}, local2: $var2.value, version: $var33.value };
+          })()`, sessionId);
+          fs.appendFileSync(path.join(OUT, 'rejections.jsonl'), JSON.stringify(state) + '\n');
+          log(`loader rejection ${JSON.stringify(state)}`);
+          return;
+        }
         const context = unbox(await evaluate(frame.callFrameId, '$var1', sessionId));
         if (!Number.isInteger(context) || context <= 0) throw new Error('load context was not an i32 pointer');
         const descriptor = await evaluate(frame.callFrameId, `(() => {
@@ -116,7 +135,10 @@ async function attachCapture(browser) {
       await page.waitForTimeout(10000);
       await page.screenshot({ path: path.join(OUT, `${label}.png`) }).catch((e) => log(`screenshot ${e.message}`));
     }
-    await page.mouse.click(640, 360);await page.keyboard.down('KeyW');await page.waitForTimeout(1500);await page.keyboard.up('KeyW');
+    await page.mouse.click(640, 360);
+    const input = { start: Date.now(), key: 'KeyW' };
+    await page.keyboard.down('KeyW');await page.waitForTimeout(1500);await page.keyboard.up('KeyW');
+    input.end = Date.now();fs.writeFileSync(path.join(OUT, `${label}-input.json`), JSON.stringify(input));
     await page.screenshot({ path: path.join(OUT, `${label}-after-w.png`) });
     log(`read-only capture count ${debuggerSession?.count() || 0}`);
     await context.close();

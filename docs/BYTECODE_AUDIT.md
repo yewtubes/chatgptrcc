@@ -12,9 +12,9 @@ Destination: `yewtubes/chatgptrcc`. Work was performed in a separate clone.
 | Are opcodes/AUX words serialized correctly? | For empty, closure/table/loop, and import/vector/method-call fixtures, independently locating instruction regions and undoing only opcode multiplication reproduces plain upstream compilation byte for byte. Recovered code loads in upstream VM 0.744; closure fixture executes and returns 42. | No encoding defect reproduced for these fixtures. This is not execution in Roblox's VM. |
 | Is RSB1 packaging internally sound? | Independent raw-zstd-block golden fixture, pinned zstd/XXH32, binary round trips through 1 MiB, and original local_rcc producer comparison. | Existing successful output matches the reference packaging. An RSB1 checksum is not a cryptographic script signature. |
 | Did fixes change successful output? | The 369-byte sample source produces 512 bytes of encoded Luau and a 369-byte RSB1 container. Baseline and fixed RSB1 SHA-256 are identical. | Sample wire output is unchanged. No network/schema/Studio patch sites were edited. |
-| Is there a further client validation requirement? | Exact loader enters a separate validation path after header checks and before string/prototype decoding; this path can emit `bytecode corrupted`. It checks for additional data and calls a format parser/validator. Signature/hash-key configuration also exists in this build. | Stock Luau bytecode alone lacks Roblox-specific authentication metadata. The existence of the gate is established statically; the precise cryptographic scheme and which sub-check rejected each historical script were not established. No forgery or bypass was attempted. |
+| Is there a further client validation requirement? | Exact loader enters a separate validation path after header checks and before string/prototype decoding; this path can emit `bytecode corrupted`. It checks for additional data and calls a format parser/validator. Signature/hash-key configuration also exists in this build. | Additional validation exists, but the precise cryptographic scheme, trust-path selection, and rejecting sub-check for the failing network scripts remain unproven. No forgery or bypass was attempted. |
 | Does bytecode arrive unchanged? | Existing debugger evidence contains empty pre-fix results and at most 64-byte previews; join logs have errors but no full correlated sender/receiver payloads. | **Not established.** Rendering/replication and compiler logs are not substitutes for full payload equality. |
-| Does the fixed code run LocalScripts in the original client? | Fresh live join could not be run here. | **Not established.** These diagnostic fixes do not claim to solve the authentication limitation. |
+| Does the fixed code run LocalScripts in the original client? | Fresh isolated Wine runs have loaded the compiler DLL but have not yet registered Studio's transport. | **Not established.** These diagnostic fixes do not establish or resolve an authentication limitation. |
 
 ## Verified bugs fixed
 
@@ -93,8 +93,10 @@ Downloaded anonymously from the build-specific public URL:
   bounds are 3 and 14 (packed diagnostic arguments `60129542147`); the
   compiler emits 13. Type version 3 is also in range.
 - The additional validation path is reached before the Luau string table.
-  Its first structural length check is 280 bytes. This is evidence that bare
-  compiled Luau is insufficient, not an instruction to pad or invent data.
+  One validation path starts with a structural length check of 280 bytes.
+  This is not an unconditional minimum for every trusted/core script: read-only
+  inspection also found smaller vendor-provided scripts. The actual network
+  script's path must be established at runtime. Do not pad or invent metadata.
 - The exact string `%s: bytecode corrupted` is at linear-memory address
   `1929392`. In this build the loader computes it as `4089158 - 2159766`.
   Searching only for a direct `i32.const 1929392` misses the reference.
@@ -143,11 +145,22 @@ server-to-client transport equality.
 
 ## Pending live test: preserve the connection and capture the boundary
 
-The audit host had neither Studio/Wine nor a browser installed. Installing
-Wine/Xvfb/MinGW failed because the package cache was not writable; Playwright's
-Chromium download repeatedly returned an invalid/truncated archive. No Studio
-process was launched or attached, and no original project database or running
-server was accessed. No Roblox account cookies were read or used.
+The original installation failures have been resolved using a workspace-owned
+package cache and verified direct downloads. The Windows DLL and injector build
+successfully. The local host prohibits AF_UNIX sockets, preventing Wine/Xvfb
+startup, so `.github/workflows/live-bytecode.yml` runs the isolated test on a
+fresh disposable Linux runner. Its Wine prefix, Studio files, database and
+processes belong to this checkout. The first completed runner attempt loaded
+the compiler DLL and matched the pinned Studio profile, but Studio did not
+register RbxTransport before the timeout. That is a failed startup test, not
+evidence of bytecode rejection or authentication. No original project database
+or running server was accessed, and no Roblox account cookies were read or used.
+
+`LOCAL_RCC_AUDIT_DIR` enables optional full compiler-result captures, preserving
+embedded NUL bytes and recording target/options. The live harness runs an
+uninterrupted baseline join before a separate read-only debugger capture of the
+fingerprinted original client. This harness is still under live validation;
+its presence alone is not transport-equality evidence.
 
 A reproducible live test on a suitable independent Windows/Wine host must:
 

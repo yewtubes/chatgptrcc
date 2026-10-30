@@ -74,13 +74,13 @@ See [BYTECODE_AUDIT.md](../docs/BYTECODE_AUDIT.md) for the evidence and limits.
 - Recovering the opcode encoding reproduces plain Luau 0.744 output byte for
   byte, including AUX words. The recovered code loads and executes in the
   pinned upstream VM. This is not a test of Roblox's VM.
-- The original WebClient has an additional validation gate before its Luau
-  string/prototype parsing. Stock Luau compilation does not produce the
-  Roblox-specific authentication data expected there. No signature is forged
-  and no protection is disabled by this audit.
+- The original WebClient has additional validation before its Luau
+  string/prototype parsing. Its exact rejecting check and the role of
+  authentication for these network scripts still require runtime evidence.
+  No signature is forged and no protection is disabled by this audit.
 - Historical joins report `bytecode corrupted`; full sender/receiver captures
   have not established whether every transmitted byte is unchanged. The
-  current environment could not run a fresh Studio/WebClient join.
+  isolated Wine runner has loaded the DLL, but a fresh join is still pending.
 - Diagnostic RSB1 decoding is now bounded, explicitly little-endian, validates
   before output allocation, rejects extra frames, and preserves output on
   failure. Successful sample encoding is byte-identical to the baseline.

@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import time
 import urllib.parse
@@ -41,9 +42,20 @@ def unzip(archive, directory):
     directory=Path(directory);directory.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(archive) as z:
         for item in z.infolist():
-            target=(directory/item.filename).resolve()
+            # Roblox's Windows ZIPs use backslashes, including directory entries
+            # rooted with a backslash. ZipFile.extractall on Linux treats those
+            # as literal filename characters instead of a directory hierarchy.
+            relative=item.filename.replace('\\','/').lstrip('/')
+            if not relative:continue
+            if ':' in relative:raise ValueError('unsafe archive drive path')
+            target=(directory/relative).resolve()
             if not target.is_relative_to(directory.resolve()):raise ValueError('unsafe archive path')
-        z.extractall(directory)
+            if relative.endswith('/'):
+                target.mkdir(parents=True,exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True,exist_ok=True)
+                with z.open(item) as source, target.open('wb') as output:
+                    shutil.copyfileobj(source,output)
 
 def studio(root):
     pkg=root/'pkg';app=root/'app'

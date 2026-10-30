@@ -54,6 +54,21 @@ def fixtures():
         ET.SubElement(props,'string',{'name':'Name'}).text=name
         ET.SubElement(props,'ProtectedString',{'name':'Source'}).text=source
         (OUT/(name+'.lua')).write_text(source)
+    observer=ET.SubElement(root,'Item',{'class':'ServerScriptService','referent':'AUDIT_SSS'})
+    script=ET.SubElement(observer,'Item',{'class':'Script','referent':'AUDIT_OBSERVER'})
+    props=ET.SubElement(script,'Properties')
+    ET.SubElement(props,'string',{'name':'Name'}).text='BytecodeAuditPositionObserver'
+    ET.SubElement(props,'ProtectedString',{'name':'Source'}).text='''
+while task.wait(0.25) do
+    for _, player in game:GetService("Players"):GetPlayers() do
+        local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            local p = root.Position
+            print(string.format("ROBLUC_POSITION|%s|%.0f|%.4f|%.4f|%.4f", player.Name, DateTime.now().UnixTimestampMillis, p.X, p.Y, p.Z))
+        end
+    end
+end
+'''
     target=RUNTIME/'audit-place.rbxlx';tree.write(target,encoding='utf-8',xml_declaration=True)
     return target
 
@@ -108,7 +123,6 @@ try:
     for row in rows:row['matching_sender_files']=sender.get(row['sha256'],[])
     result['received_bytecode']=rows
     result['full_payload_matches']=sum(bool(row['matching_sender_files']) for row in rows)
-    result['controls_fixed']=result['baseline']['small_probe_executed'] and not result['baseline']['player_module_corrupted']
     if not result['baseline']['replicator_created']:raise RuntimeError('baseline did not reach Replicator creation')
     if not rows:raise RuntimeError('no actual VM loader captures recorded')
 except Exception as error:
@@ -126,6 +140,18 @@ finally:
     # Wine user names can differ from the runner account; collect only this prefix.
     for file in (STUDIO/'prefix/drive_c/users').glob('*/AppData/Local/Roblox/**/*.log'):
         (OUT/('studio-'+file.name)).write_bytes(file.read_bytes())
+    input_file=OUT/'baseline-input.json'
+    if input_file.exists():
+        window=json.loads(input_file.read_text());positions=[]
+        for file in OUT.glob('studio-*.log'):
+            for name,stamp,x,y,z in re.findall(r'ROBLUC_POSITION\|([^|\r\n]+)\|(\d+)\|(-?[\d.]+)\|(-?[\d.]+)\|(-?[\d.]+)',file.read_text(errors='replace')):
+                if name=='AuditBaseline' and window['start']-500 <= int(stamp) <= window['end']+500:
+                    positions.append((int(stamp),float(x),float(y),float(z)))
+        positions.sort()
+        distance=max(((p[1]-positions[0][1])**2+(p[3]-positions[0][3])**2)**0.5 for p in positions) if positions else 0
+        result['movement']={'input':window,'server_positions':positions,'horizontal_displacement_studs':distance}
+        baseline=result.get('baseline',{})
+        result['controls_fixed']=bool(baseline.get('small_probe_executed') and not baseline.get('player_module_corrupted') and distance>1)
     file=ROOT/'webclient/live/version-75f1039cb4964863/WebClient.wasm'
     if file.exists():result['webclient_sha256_after']=hashlib.sha256(file.read_bytes()).hexdigest()
     (OUT/'live-result.json').write_text(json.dumps(result,indent=2)+'\n')
