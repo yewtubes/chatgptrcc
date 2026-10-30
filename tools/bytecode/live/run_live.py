@@ -23,6 +23,7 @@ env=dict(os.environ,WINEPREFIX=str(STUDIO/'prefix'),WINEARCH='win64',WINEDEBUG='
          STUDIO_BACKEND_LOG=str(OUT/'studio-backend.log'),LOCAL_RCC_LOG='Z:'+str(OUT/'compiler.log'),LOCAL_RCC_AUDIT_DIR='Z:'+str(OUT/'sender'),
          RCC_HOST='127.0.0.1',RCC_PORT='53680',PLACE_ID='1818',STUDIO_PLACE_ID='1818',LP_NUM_THREADS='1')
 env['STUDIO_WINEDEBUG']='-all,err+all,warn+module,warn+seh'
+env['STUDIO_OAUTH_USER']='Builder'
 cpus=sorted(os.sched_getaffinity(0));split=max(1,len(cpus)//2)
 env['STUDIO_CPUS']=','.join(map(str,cpus[:split]));browser_cpus=cpus[split:] or cpus[:1]
 username=getpass.getuser()
@@ -94,13 +95,36 @@ try:
     run(['node','-e',"require('./tools/backend/db.js').open()"],stdout=subprocess.DEVNULL)
     api=start(['node','tools/studio_backend.js'],'backend-process.log')
     time.sleep(2)
-    server=start(['tools/studio/run_server.sh',str(fixtures()),'53680'],'studio-launch.log')
+    server_command=['tools/studio/run_server.sh',str(fixtures()),'53680']
+    server=start(server_command,'studio-launch.log')
     started=time.monotonic()
-    while time.monotonic()-started<200:
+    clicked=False;login_completed=None;restarted=False
+    while time.monotonic()-started<260:
         if server.poll() is not None:raise RuntimeError('Studio server exited; see studio-launch.log')
         if 'run_server: registered job ' in readlog('studio-launch.log'):break
+        elapsed=time.monotonic()-started
+        if not clicked and elapsed>15 and '/oauth/v1/authorize' in readlog('studio-backend.log'):
+            # Observed on the pinned build's 1280x800 Wine desktop. The existing
+            # xdg-open helper completes OAuth against this checkout's backend.
+            run(['scrot',str(OUT/'studio-before-local-login.png')])
+            run(['xdotool','mousemove','749','460','click','1'])
+            clicked=True
+            result['local_studio_login']={'backend_user':'Builder','browser_button_clicked':True}
+        if 'oauth: authorization_code -> tokens for Builder' in readlog('backend-process.log') and login_completed is None:
+            login_completed=time.monotonic()
+            result.setdefault('local_studio_login',{'backend_user':'Builder'})['token_exchange_completed']=True
+        if login_completed and not restarted and time.monotonic()-login_completed>45:
+            # Some Studio login flows consume the original launch intent. Retry
+            # the same server command after persisting this prefix's own login.
+            os.killpg(server.pid,signal.SIGTERM)
+            run(['wineserver','-k'],timeout=20)
+            run(['wineserver','-w'],timeout=20)
+            (OUT/'studio-before-restart.log').write_text(readlog('studio-launch.log'))
+            server=start(server_command,'studio-launch.log')
+            restarted=True
+            result['local_studio_login']['server_restarted_after_login']=True
         time.sleep(2)
-    else:raise RuntimeError('Studio did not register RbxTransport within 200 seconds')
+    else:raise RuntimeError('Studio did not register RbxTransport within 260 seconds')
     for capture in (False,True):
         label='capture' if capture else 'baseline'
         command=['taskset','-c',','.join(map(str,browser_cpus)),'node','tools/bytecode/live/browser_run.js']+(['--capture'] if capture else [])
