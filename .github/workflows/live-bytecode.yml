@@ -52,13 +52,28 @@ jobs:
           python3 tools/bytecode/live/prepare_runtime.py webclient .live-runtime
           echo "PATH=$PWD/.live-runtime/wine/opt/wine-staging/bin:$PATH" >> "$GITHUB_ENV"
           echo "CHROMIUM_EXECUTABLE_PATH=$PWD/.live-runtime/chrome/chrome-headless-shell-linux64/chrome-headless-shell" >> "$GITHUB_ENV"
+      - name: Restore compiler builds for unchanged compiler sources
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            local_rcc_modern/build-host
+            local_rcc_modern/build-win
+          key: robluc-bytecode-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('local_rcc_modern/CMakeLists.txt', 'local_rcc_modern/cmake/**', 'local_rcc_modern/src/**', 'local_rcc_modern/tests/**') }}
       - name: Build compiler and capture diagnostics
+        id: build
         run: |
           cmake -S local_rcc_modern -B local_rcc_modern/build-host -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build local_rcc_modern/build-host --parallel 2
           ctest --test-dir local_rcc_modern/build-host --output-on-failure
           cmake -S local_rcc_modern -B local_rcc_modern/build-win -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build local_rcc_modern/build-win --parallel 2
+      - name: Cache verified compiler builds for harness-only retries
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            local_rcc_modern/build-host
+            local_rcc_modern/build-win
+          key: robluc-bytecode-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('local_rcc_modern/CMakeLists.txt', 'local_rcc_modern/cmake/**', 'local_rcc_modern/src/**', 'local_rcc_modern/tests/**') }}
       - name: Start isolated Studio and test the original WebClient
         run: python3 tools/bytecode/live/run_live.py
       - name: Upload actual logs and captures

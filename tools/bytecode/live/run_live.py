@@ -103,16 +103,16 @@ try:
         if server.poll() is not None:raise RuntimeError('Studio server exited; see studio-launch.log')
         if 'run_server: registered job ' in readlog('studio-launch.log'):break
         elapsed=time.monotonic()-started
-        if not clicked and elapsed>15 and '/oauth/v1/authorize' in readlog('studio-backend.log'):
+        if 'oauth: authorization_code -> tokens for Builder' in readlog('backend-process.log') and login_completed is None:
+            login_completed=time.monotonic()
+            result.setdefault('local_studio_login',{'backend_user':'Builder'})['token_exchange_completed']=True
+        if not clicked and login_completed is None and elapsed>15 and '/oauth/v1/authorize' in readlog('studio-backend.log'):
             # Observed on the pinned build's 1280x800 Wine desktop. The existing
             # xdg-open helper completes OAuth against this checkout's backend.
             run(['scrot',str(OUT/'studio-before-local-login.png')])
             run(['xdotool','mousemove','749','460','click','1'])
             clicked=True
             result['local_studio_login']={'backend_user':'Builder','browser_button_clicked':True}
-        if 'oauth: authorization_code -> tokens for Builder' in readlog('backend-process.log') and login_completed is None:
-            login_completed=time.monotonic()
-            result.setdefault('local_studio_login',{'backend_user':'Builder'})['token_exchange_completed']=True
         if login_completed and not restarted and time.monotonic()-login_completed>45:
             # Some Studio login flows consume the original launch intent. Retry
             # the same server command after persisting this prefix's own login.
@@ -129,9 +129,13 @@ try:
         label='capture' if capture else 'baseline'
         command=['taskset','-c',','.join(map(str,browser_cpus)),'node','tools/bytecode/live/browser_run.js']+(['--capture'] if capture else [])
         browser=start(command,label+'-process.log')
-        try:code=browser.wait(timeout=240)
-        except subprocess.TimeoutExpired:
-            os.killpg(browser.pid,signal.SIGTERM);raise RuntimeError(label+' browser timed out')
+        deadline=time.monotonic()+240
+        while browser.poll() is None:
+            if server.poll() is not None:raise RuntimeError('Studio exited during '+label+' browser run')
+            if time.monotonic()>deadline:
+                os.killpg(browser.pid,signal.SIGTERM);raise RuntimeError(label+' browser timed out')
+            time.sleep(0.5)
+        code=browser.returncode
         if code:raise RuntimeError(label+' browser failed; see logs')
         text=readlog(label+'-browser.log')
         result[label]={'replicator_created':bool(re.search(r'Replicator created',text,re.I)),
@@ -139,6 +143,7 @@ try:
                        'small_probe_executed':'ROBLUC_BYTECODE_AUDIT_SMALL' in text,
                        'large_probe_executed':'ROBLUC_BYTECODE_AUDIT_LARGE' in text,
                        'bytecode_errors':sorted(set(re.findall(r'[^\n]*bytecode corrupted[^\n]*',text)))}
+        if not result[label]['replicator_created']:raise RuntimeError(label+' did not reach Replicator creation')
     result['live_join_run']=True
     receiver=OUT/'receiver.jsonl';sender={}
     for file in (OUT/'sender').glob('*.bc'):

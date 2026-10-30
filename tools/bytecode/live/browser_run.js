@@ -9,6 +9,7 @@ const label = capture ? 'capture' : 'baseline';
 const LOADER_OFFSET = 86082284;
 const CORRUPTED_OFFSET = 86093212;
 const WASM_SHA = 'd72c52618f5c153c9b17a97e644914d43918c7122d754d96f79e8323acc6a15d';
+const WATCHED_CHUNK = /(?:^|\.)(?:BytecodeAuditSmall|BytecodeAuditLarge|PlayerModule|PlayerScriptsLoader|RbxCharacterSounds|Animate)(?:$|\.)/;
 const wasmFile = path.resolve('webclient/live/version-75f1039cb4964863/WebClient.wasm');
 if (crypto.createHash('sha256').update(fs.readFileSync(wasmFile)).digest('hex') !== WASM_SHA)
   throw new Error('Unsupported WebClient fingerprint');
@@ -24,7 +25,7 @@ async function attachCapture(browser) {
   const watchedName = (pointer) => `(() => {
     const h = new Uint8Array(memories[0].buffer), p = ${pointer};
     let end = p; while (end < h.length && h[end] && end - p < 4096) ++end;
-    return /BytecodeAudit|PlayerModule|PlayerScriptsLoader|RbxCharacterSounds|Animate/.test(new TextDecoder().decode(h.slice(p, end)));
+    return ${WATCHED_CHUNK}.test(new TextDecoder().decode(h.slice(p, end)));
   })()`;
   const pending = new Map();
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
@@ -75,7 +76,7 @@ async function attachCapture(browser) {
           let end = name; while (end < h.length && h[end] && end - name < 4096) ++end;
           return { chunk: new TextDecoder().decode(h.slice(name, end)), data, size };
         })()`, sessionId);
-        if (!descriptor || !/BytecodeAudit|PlayerModule|PlayerScriptsLoader|RbxCharacterSounds|Animate/.test(descriptor.chunk)) return;
+        if (!descriptor || !WATCHED_CHUNK.test(descriptor.chunk)) return;
         if (descriptor.size > 16 * 1024 * 1024 || descriptor.data + descriptor.size > 2147483648)
           throw new Error('capture outside diagnostic bounds');
         const n = ++hits;
