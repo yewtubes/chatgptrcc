@@ -125,7 +125,7 @@ try:
             result['local_studio_login']['server_restarted_after_login']=True
         time.sleep(2)
     else:raise RuntimeError('Studio did not register RbxTransport within 260 seconds')
-    for capture in (False,True):
+    for capture in ((True,) if env.get('PLAYERMODULE_TRACE_ONLY') else (False,True)):
         label='capture' if capture else 'baseline'
         command=['taskset','-c',','.join(map(str,browser_cpus)),'node','tools/bytecode/live/browser_run.js']+(['--capture'] if capture else [])
         browser=start(command,label+'-process.log')
@@ -152,7 +152,7 @@ try:
     for row in rows:row['matching_sender_files']=sender.get(row['sha256'],[])
     result['received_bytecode']=rows
     result['full_payload_matches']=sum(bool(row['matching_sender_files']) for row in rows)
-    if not result['baseline']['replicator_created']:raise RuntimeError('baseline did not reach Replicator creation')
+    if not result.get('baseline',result.get('capture',{})).get('replicator_created'):raise RuntimeError('client did not reach Replicator creation')
     if not rows:raise RuntimeError('no actual VM loader captures recorded')
 except Exception as error:
     result['failure']=str(error)

@@ -21,7 +21,7 @@ async function attachCapture(browser) {
   const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
   const socket = new WebSocket(version.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
-  let id = 0, hits = 0;
+  let id = 0, hits = 0, playerModuleCaptured = false, playerModuleRejected = false;
   const watchedName = (pointer) => `(() => {
     const h = new Uint8Array(memories[0].buffer), p = ${pointer};
     let end = p; while (end < h.length && h[end] && end - p < 4096) ++end;
@@ -65,6 +65,7 @@ async function attachCapture(browser) {
             return { chunk: new TextDecoder().decode(h.slice(p, end)), errorOffset: ${CORRUPTED_OFFSET}, local2: $var2.value, version: $var33.value };
           })()`, sessionId);
           fs.appendFileSync(path.join(OUT, 'rejections.jsonl'), JSON.stringify(state) + '\n');
+          if (/(?:^|\.)PlayerModule$/.test(state.chunk)) playerModuleRejected = true;
           log(`loader rejection ${JSON.stringify(state)}`);
           return;
         }
@@ -93,6 +94,7 @@ async function attachCapture(browser) {
         fs.writeFileSync(path.join(OUT, file), bytes);
         const row = { file, chunk: descriptor.chunk, size: bytes.length, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), version: bytes[0], types: bytes[1] };
         fs.appendFileSync(path.join(OUT, 'receiver.jsonl'), JSON.stringify(row) + '\n');
+        if (/(?:^|\.)PlayerModule$/.test(row.chunk)) playerModuleCaptured = true;
         log(`captured ${JSON.stringify(row)}`);
       } catch (e) { log(`capture error: ${e.stack || e}`); }
       finally { await send('Debugger.resume', {}, sessionId).catch(() => {}); }
@@ -106,7 +108,7 @@ async function attachCapture(browser) {
     } else if (value.method) event(value).catch((e) => log(`CDP event error: ${e.stack || e}`));
   };
   await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
-  return { close: () => socket.close(), count: () => hits };
+  return { close: () => socket.close(), count: () => hits, playerModuleDone: () => playerModuleCaptured && playerModuleRejected };
 }
 
 (async () => {
@@ -132,6 +134,13 @@ async function attachCapture(browser) {
     page.on('pageerror', (e) => log(`PAGEERROR: ${e.stack || e}`));
     page.on('crash', () => log('PAGE CRASHED'));
     await page.goto(`http://localhost:${server.address().port}/games/start?placeId=1818`);
+    if (process.env.PLAYERMODULE_TRACE_ONLY) {
+      const deadline = Date.now() + 150000;
+      while (Date.now() < deadline && !debuggerSession.playerModuleDone()) await page.waitForTimeout(1000);
+      log(`PlayerModule trace complete=${debuggerSession.playerModuleDone()} captures=${debuggerSession.count()}`);
+      await context.close();
+      return;
+    }
     for (let elapsed = 0; elapsed < (capture ? 150 : 90); elapsed += 10) {
       await page.waitForTimeout(10000);
       await page.screenshot({ path: path.join(OUT, `${label}.png`) }).catch((e) => log(`screenshot ${e.message}`));

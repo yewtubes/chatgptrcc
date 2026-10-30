@@ -23,6 +23,7 @@ jobs:
       LOCAL_RCC: '1'
       LP_NUM_THREADS: '1'
       PORT: '18080'
+      PLAYERMODULE_TRACE_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
