@@ -1,0 +1,5 @@
+{"file":"receiver-001.bc","chunk":"=Players.AuditCapture.PlayerScripts.PlayerScriptsLoader","size":159,"sha256":"0c876b140fb5af12fbcdd6bd8612f007a6244fd22916960fa2fe4be920469fd5","version":13,"types":3}
+{"file":"receiver-002.bc","chunk":"=Players.AuditCapture.PlayerScripts.BytecodeAuditSmall","size":99,"sha256":"cd14443e0ef96ad676ab9ea06707013c5ffec1452398326a04953429956414bc","version":13,"types":3}
+{"file":"receiver-003.bc","chunk":"=Players.AuditCapture.PlayerScripts.BytecodeAuditLarge","size":3210,"sha256":"47fef4e0712f1b5a186e0975b655bec5d902014ef75d670dca1be4aeb2e05e21","version":13,"types":3}
+{"file":"receiver-004.bc","chunk":"=Players.AuditCapture.PlayerScripts.RbxCharacterSounds","size":8869,"sha256":"06fd19e419c9b1b8ccd20ecbf8dcca9e87744bcf795e4bd4c98701f476433e6c","version":13,"types":3}
+{"file":"receiver-005.bc","chunk":"=Players.AuditCapture.PlayerScripts.PlayerModule","size":639,"sha256":"2b2c6621784d9188e66152ed3fc98754d7a27e837938172b5557bfaec6b2237a","version":13,"types":3}

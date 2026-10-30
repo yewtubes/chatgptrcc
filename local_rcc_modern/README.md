@@ -78,9 +78,11 @@ See [BYTECODE_AUDIT.md](../docs/BYTECODE_AUDIT.md) for the evidence and limits.
   string/prototype parsing. Its exact rejecting check and the role of
   authentication for these network scripts still require runtime evidence.
   No signature is forged and no protection is disabled by this audit.
-- Historical joins report `bytecode corrupted`; full sender/receiver captures
-  have not established whether every transmitted byte is unchanged. The
-  isolated Wine runner has loaded the DLL, but a fresh join is still pending.
+- A fresh original-client join captures all 639 bytes of the real PlayerModule,
+  matching the actual Studio producer exactly. It fails footer format/version
+  identification before prototype parsing. Four other full captures also match.
+  Small local scripts execute. PlayerModule and character controls still fail;
+  a private-key authentication requirement is not conclusively established.
 - Diagnostic RSB1 decoding is now bounded, explicitly little-endian, validates
   before output allocation, rejects extra frames, and preserves output on
   failure. Successful sample encoding is byte-identical to the baseline.

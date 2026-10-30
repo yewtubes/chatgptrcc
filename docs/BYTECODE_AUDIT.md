@@ -13,10 +13,52 @@ Destination: `yewtubes/chatgptrcc`. Work was performed in a separate clone.
 | Is RSB1 packaging internally sound? | Independent raw-zstd-block golden fixture, pinned zstd/XXH32, binary round trips through 1 MiB, and original local_rcc producer comparison. | Existing successful output matches the reference packaging. An RSB1 checksum is not a cryptographic script signature. |
 | Did fixes change successful output? | The 369-byte sample source produces 512 bytes of encoded Luau and a 369-byte RSB1 container. Baseline and fixed RSB1 SHA-256 are identical. | Sample wire output is unchanged. No network/schema/Studio patch sites were edited. |
 | Is there a further client validation requirement? | Exact loader enters a separate validation path after header checks and before string/prototype decoding; this path can emit `bytecode corrupted`. It checks for additional data and calls a format parser/validator. Signature/hash-key configuration also exists in this build. | Additional validation exists, but the precise cryptographic scheme, trust-path selection, and rejecting sub-check for the failing network scripts remain unproven. No forgery or bypass was attempted. |
-| Does bytecode arrive unchanged? | Existing debugger evidence contains empty pre-fix results and at most 64-byte previews; join logs have errors but no full correlated sender/receiver payloads. | **Not established.** Rendering/replication and compiler logs are not substitutes for full payload equality. |
-| Does the fixed code run LocalScripts in the original client? | Fresh isolated Wine runs have loaded the compiler DLL but have not yet registered Studio's transport. | **Not established.** These diagnostic fixes do not establish or resolve an authentication limitation. |
+| Does bytecode arrive unchanged? | Fresh original-client trace captured five complete payloads, including the real default PlayerModule. Each matches an actual Studio DLL result byte for byte. PlayerModule is 639 bytes; its RSB1 container has an embedded NUL. | **Verified for these five captured scripts**, not for every historical script. |
+| Do LocalScripts run in the original client? | The fresh join creates the Replicator and executes the 99-byte local probe and the 159-byte PlayerScriptsLoader. PlayerModule, RbxCharacterSounds and the larger probe hit the extra validation rejection. | Small locally compiled scripts do run. **Movement is not fixed.** A blanket claim that all local compilation is rejected is false. |
 
-## Verified bugs fixed
+## Real PlayerModule trace (2026-10-30)
+
+Actual run: [40982069580](https://github.com/yewtubes/chatgptrcc/actions/runs/40982069580),
+revision `509fcdaf821dd683b381b96abbb0133049e4c103`. The independent test account
+is `AuditCapture`, so its live path is
+`Players.AuditCapture.PlayerScripts.PlayerModule`. This is Studio's real default
+movement module, not a synthetic replacement. The historical Player1 payload
+was not saved in full, so no historical byte-for-byte comparison is claimed.
+
+| Boundary | Actual observation |
+|---|---|
+| Studio registration/compiler | 793 source bytes; callback target 0/options 8; actual DLL capture `224-5.bc` is 639 bytes. Its string table includes CameraModule, ControlModule, GetCameras and GetControls. |
+| Packaging | Actual returned RSB1 is 395 bytes and contains one NUL. Decoding it produces exactly the 639-byte compiler capture. |
+| Network to VM | The original client's load-context pointer/length supplies all 639 bytes for the named PlayerModule. Every byte matches the producer, SHA-256 `2b2c6621784d9188e66152ed3fc98754d7a27e837938172b5557bfaec6b2237a`. |
+| Header checks | Bytecode 13/types 3 pass. The unchanged client also executes two other complete, matching v13/type3 script payloads. |
+| First rejecting stage | Read-only breakpoint at original file offset `86093212` (`0x521ad9c`) records reason 3 for PlayerModule. Static control flow assigns that reason when function 108051 returns a negative footer-format/version result. This occurs before Luau string/prototype decoding. |
+| Ordinary Luau structure | Recovering only opcode bytes yields a stream that loads successfully in pinned upstream Luau: 43 instructions and 22 AUX words. The module was not executed in that reference VM. |
+| User-visible outcome | PlayerModule still reports `bytecode corrupted`; its camera/control modules do not initialize. WASD, jumping and camera success have not been established. |
+
+Rejection records, complete-payload hashes and reproduction instructions are
+in [evidence/bytecode-audit/player-module](evidence/bytecode-audit/player-module).
+The full raw files were captured and compared locally; automatic approval
+review blocked publishing their potentially proprietary contents in GitHub.
+The original WASM remains SHA-256 `d72c52618f5c153c9b17a97e644914d43918c7122d754d96f79e8323acc6a15d`.
+
+This rules out truncation, compressed-string NUL handling and changed bytes in
+transit for PlayerModule. Its immediate failure is the missing engine validation
+metadata, not the header version or prototype parser. The first rejecting check
+is **format/version identification**, not a recorded cryptographic signature
+verification failure. A private-key authentication requirement is therefore
+**not conclusively established by this trace**. Do not describe a footer marker
+alone as proof of a private signing service, or claim that every later engine
+check would pass once metadata is present.
+
+The two metadata layouts inspected are distinct from Luau's bytecode version.
+The loader's older 40-byte metadata path is not an approved workaround: its
+format identification has a separate compatibility-policy check. No metadata
+version downgrade, invented tag, copied signature or verification flag change
+was made. A compatible producer must supply valid engine metadata through a
+legitimate compilation path; this repository has not yet established such a
+producer for the original WebClient.
+
+## Verified diagnostic bugs fixed
 
 The latest user screenshot shows
 `Players.123.PlayerGui.Freecam.FreecamScript: bytecode corrupted`.
@@ -57,13 +99,13 @@ WebTransport setup, database, or original WebClient.
 
 | Stage | Inspection | Result |
 |---|---|---|
-| Studio input | `lrm_compile` copies `source->data()` with `source->size`, not `strlen`. | Embedded NULs are not silently truncated at this copy. Actual runtime ABI ownership remains untested here. |
+| Studio input | `lrm_compile` copies `source->data()` with `source->size`, not `strlen`. | Actual Studio probe results match independent compilation; the real PlayerModule result is captured and transmitted unchanged. |
 | Compile options | Optimization 1, debug 1, Vector3 constructor/type and mutable globals; callback `target`/`options` are logged but not interpreted. | Both original and fixed encoders keep these settings. Target/options semantics are not established by the host tests and were not guessed. |
 | Opcode encoding | Multiply only the low opcode byte by 227; advance using the unencoded opcode's instruction length. | Inverse 203 recovers the complete reference serialization, including unchanged AUX words, for the fixtures. |
 | Compression and wrapping | RSB1 magic, little-endian original length, zstd, XXH32 seed 42 and keyed XOR. | Successful packaging agrees with the original local_rcc producer. This layer does not supply Roblox script authentication. |
-| Return to Studio | A 32-byte MSVC x64 string layout, 16-byte small-string storage, explicit size/capacity and trailing NUL; large strings use Studio's exported allocator. | No `strlen`-based truncation is visible in this implementation. Runtime allocation/free compatibility was not retested. |
-| Network serialization | Existing Studio implementation selected by schema type 0x2F. | No serializer code is changed. The wrapper's correct lengths do not prove what the proprietary serializer transmits. |
-| Client load | Fingerprinted loader context supplies data and size to the exact client. | Additional validation exists before prototype parsing. Full paired sender/receiver captures are still required. |
+| Return to Studio | A 32-byte MSVC x64 string layout, 16-byte small-string storage, explicit size/capacity and trailing NUL; large strings use Studio's exported allocator. | The actual PlayerModule container, including one NUL byte, survives the return and subsequent replication. This does not exhaustively validate every allocator size. |
+| Network serialization | Existing Studio implementation selected by schema type 0x2F. | No serializer code is changed. Five actual full sender/receiver payloads match, including PlayerModule and RbxCharacterSounds. |
+| Client load | Fingerprinted loader context supplies data and size to the exact client. | PlayerModule reaches the extra footer-format/version identification rejection before prototype parsing, reason 3. |
 
 The compile-error branch currently returns raw `\0 + message` without RSB1,
 whereas the reference local_rcc producer wraps compiler results uniformly.
@@ -143,9 +185,10 @@ its opcode-encoded Luau SHA-256 is
 The comparison in the saved evidence is **offline packaging equality**, not
 server-to-client transport equality.
 
-## Pending live test: preserve the connection and capture the boundary
+## Reproduction procedure and setup history
 
-The original installation failures have been resolved using a workspace-owned
+The completed live PlayerModule trace above supersedes the early startup
+failures below. The original installation failures were resolved using a workspace-owned
 package cache and verified direct downloads. The Windows DLL and injector build
 successfully. The local host prohibits AF_UNIX sockets, preventing Wine/Xvfb
 startup, so `.github/workflows/live-bytecode.yml` runs the isolated test on a
@@ -160,7 +203,8 @@ or running server was accessed, and no Roblox account cookies were read or used.
 embedded NUL bytes and recording target/options. The live harness runs an
 uninterrupted baseline join before a separate read-only debugger capture of the
 fingerprinted original client. This harness is still under live validation;
-its presence alone is not transport-equality evidence.
+its presence alone is not transport-equality evidence. The saved PlayerModule
+and four other paired captures now supply that evidence for those scripts.
 
 A reproducible live test on a suitable independent Windows/Wine host must:
 

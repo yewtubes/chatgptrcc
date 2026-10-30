@@ -1,0 +1,82 @@
+{
+  "live_join_run": true,
+  "controls_fixed": false,
+  "webclient_modified": false,
+  "runtime": "Wine Staging 11.20 / Studio 0.745.0.7451137",
+  "local_studio_login": {
+    "backend_user": "Builder",
+    "browser_button_clicked": true,
+    "token_exchange_completed": true
+  },
+  "capture": {
+    "replicator_created": true,
+    "player_module_corrupted": true,
+    "small_probe_executed": true,
+    "large_probe_executed": false,
+    "bytecode_errors": [
+      "error: [6] 2083-08-28T01:42:47.000Z,1793321472.000000,2d90790,6,Error [FLog::CreatorError] Error: Players.AuditCapture.PlayerGui.Freecam.FreecamScript: bytecode corrupted",
+      "error: [6] 2083-08-28T01:42:47.000Z,1793321472.000000,2d90790,6,Error [FLog::CreatorError] Error: Players.AuditCapture.PlayerScripts.BytecodeAuditLarge: bytecode corrupted",
+      "error: [6] 2083-08-28T01:42:47.000Z,1793321472.000000,2d90790,6,Error [FLog::CreatorError] Error: Players.AuditCapture.PlayerScripts.PlayerModule: bytecode corrupted",
+      "error: [6] 2083-08-28T01:42:47.000Z,1793321472.000000,2d90790,6,Error [FLog::CreatorError] Error: Players.AuditCapture.PlayerScripts.RbxCharacterSounds: bytecode corrupted"
+    ]
+  },
+  "received_bytecode": [
+    {
+      "file": "receiver-001.bc",
+      "chunk": "=Players.AuditCapture.PlayerScripts.PlayerScriptsLoader",
+      "size": 159,
+      "sha256": "0c876b140fb5af12fbcdd6bd8612f007a6244fd22916960fa2fe4be920469fd5",
+      "version": 13,
+      "types": 3,
+      "matching_sender_files": [
+        "224-46.bc"
+      ]
+    },
+    {
+      "file": "receiver-002.bc",
+      "chunk": "=Players.AuditCapture.PlayerScripts.BytecodeAuditSmall",
+      "size": 99,
+      "sha256": "cd14443e0ef96ad676ab9ea06707013c5ffec1452398326a04953429956414bc",
+      "version": 13,
+      "types": 3,
+      "matching_sender_files": [
+        "224-2.bc"
+      ]
+    },
+    {
+      "file": "receiver-003.bc",
+      "chunk": "=Players.AuditCapture.PlayerScripts.BytecodeAuditLarge",
+      "size": 3210,
+      "sha256": "47fef4e0712f1b5a186e0975b655bec5d902014ef75d670dca1be4aeb2e05e21",
+      "version": 13,
+      "types": 3,
+      "matching_sender_files": [
+        "224-3.bc"
+      ]
+    },
+    {
+      "file": "receiver-004.bc",
+      "chunk": "=Players.AuditCapture.PlayerScripts.RbxCharacterSounds",
+      "size": 8869,
+      "sha256": "06fd19e419c9b1b8ccd20ecbf8dcca9e87744bcf795e4bd4c98701f476433e6c",
+      "version": 13,
+      "types": 3,
+      "matching_sender_files": [
+        "224-47.bc"
+      ]
+    },
+    {
+      "file": "receiver-005.bc",
+      "chunk": "=Players.AuditCapture.PlayerScripts.PlayerModule",
+      "size": 639,
+      "sha256": "2b2c6621784d9188e66152ed3fc98754d7a27e837938172b5557bfaec6b2237a",
+      "version": 13,
+      "types": 3,
+      "matching_sender_files": [
+        "224-5.bc"
+      ]
+    }
+  ],
+  "full_payload_matches": 5,
+  "webclient_sha256_after": "d72c52618f5c153c9b17a97e644914d43918c7122d754d96f79e8323acc6a15d"
+}
